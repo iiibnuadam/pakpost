@@ -11,15 +11,17 @@ import performanceReducer from './slices/performance';
 import workspacesReducer from './slices/workspaces';
 import apiSpecReducer from './slices/apiSpec';
 import openapiSyncReducer from './slices/openapi-sync';
+import gitReducer from './slices/git';
 import { draftDetectMiddleware } from './middlewares/draft/middleware';
 import { autosaveMiddleware } from './middlewares/autosave/middleware';
 import { snapshotMiddleware } from './middlewares/snapshot/middleware';
+import { gitAutoCommitMiddleware } from './middlewares/git-autocommit/middleware';
 
 const isDevEnv = () => {
   return import.meta.env.MODE === 'development';
 };
 
-let middleware = [tasksMiddleware.middleware, draftDetectMiddleware, autosaveMiddleware, snapshotMiddleware];
+let middleware = [tasksMiddleware.middleware, draftDetectMiddleware, autosaveMiddleware, snapshotMiddleware, gitAutoCommitMiddleware];
 if (isDevEnv()) {
   middleware = [...middleware, debugMiddleware.middleware];
 }
@@ -35,7 +37,8 @@ export const store = configureStore({
     performance: performanceReducer,
     workspaces: workspacesReducer,
     apiSpec: apiSpecReducer,
-    openapiSync: openapiSyncReducer
+    openapiSync: openapiSyncReducer,
+    git: gitReducer
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(middleware)
 });

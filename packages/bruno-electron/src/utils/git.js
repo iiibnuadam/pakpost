@@ -255,6 +255,32 @@ const commitChanges = async (gitRootPath, message) => {
   });
 };
 
+const resolveConflict = async (gitRootPath, filePath, strategy) => {
+  return new Promise((resolve, reject) => {
+    const git = getSimpleGitInstanceForPath(gitRootPath);
+    const normalizedPath = filePath.replace(/\\/g, '/');
+
+    if (strategy !== 'ours' && strategy !== 'theirs') {
+      reject(new Error('Invalid conflict resolution strategy. Use "ours" or "theirs".'));
+      return;
+    }
+
+    git.checkout([`--${strategy}`, normalizedPath], (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      git.add(normalizedPath, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve();
+      });
+    });
+  });
+};
+
 const getStagedFileDiff = async (gitRootPath, filePath) => {
   return new Promise((resolve, reject) => {
     const git = getSimpleGitInstanceForPath(gitRootPath);
@@ -555,49 +581,92 @@ const canPush = async (gitRootPath) => {
   return true;
 };
 
-const pushGitChanges = async (win, { gitRootPath, processUid, remote, remoteBranch }) => {
-  return new Promise(async (resolve, reject) => {
-    const git = getSimpleGitInstanceForPath(gitRootPath);
-    git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true }));
+const createAskpassScript = async (gitRootPath) => {
+  const os = require('os');
+  const path = require('path');
+  const fs = require('fs');
+  const scriptPath = path.join(os.tmpdir(), `bruno-git-askpass-${Date.now()}.sh`);
+  const script = `#!/usr/bin/env node
+const prompt = process.argv[2] || '';
+if (prompt.toLowerCase().includes('username')) {
+  process.stdout.write(process.env.BRUNO_GIT_USERNAME || '');
+} else if (prompt.toLowerCase().includes('password')) {
+  process.stdout.write(process.env.BRUNO_GIT_PASSWORD || '');
+} else {
+  process.stdout.write('');
+}
+`;
+  await fs.promises.writeFile(scriptPath, script, { mode: 0o755 });
+  return scriptPath;
+};
 
+const removeAskpassScript = async (scriptPath) => {
+  try {
+    if (scriptPath) {
+      await fs.promises.unlink(scriptPath);
+    }
+  } catch (err) {
+    // ignore cleanup errors
+  }
+};
+
+const pushGitChanges = async (win, { gitRootPath, processUid, remote, remoteBranch, username, password }) => {
+  let askpassScriptPath = null;
+
+  return new Promise(async (resolve, reject) => {
     try {
+      const gitOptions = {};
+      if (username && password) {
+        askpassScriptPath = await createAskpassScript(gitRootPath);
+        gitOptions.env = {
+          ...process.env,
+          GIT_ASKPASS: askpassScriptPath,
+          BRUNO_GIT_USERNAME: username,
+          BRUNO_GIT_PASSWORD: password,
+          SSH_ASKPASS_REQUIRE: 'never'
+        };
+      }
+
+      const git = simpleGit(gitRootPath, gitOptions);
+      git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true }));
+
       // Check if the local branch is tracking a remote branch
       git.branch((err, branchSummary) => {
         if (err) {
+          removeAskpassScript(askpassScriptPath);
           reject(err);
           return;
         }
 
-        const currentBranch = branchSummary.branches[remoteBranch];
+        const actualBranchName = remoteBranch === 'HEAD' ? branchSummary.current : remoteBranch;
+        const currentBranch = branchSummary.branches[actualBranchName];
 
         if (!currentBranch) {
-          reject(new Error(`Branch ${remoteBranch} does not exist.`));
+          removeAskpassScript(askpassScriptPath);
+          reject(new Error(`Branch ${actualBranchName} does not exist.`));
           return;
         }
 
         const trackingBranch = currentBranch.tracking;
+        const onComplete = (err, res) => {
+          removeAskpassScript(askpassScriptPath);
+          if (err) {
+            reject(err);
+          } else {
+            resolve(res);
+          }
+        };
 
         if (!trackingBranch) {
           // Set the upstream tracking branch
-          git.push(['--set-upstream', remote, remoteBranch], (err, res) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(res);
-            }
-          });
+          git.push(['--set-upstream', remote, actualBranchName], onComplete);
         } else {
           // Push the local branch to the remote
-          git.push(remote, remoteBranch, (err, res) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(res);
-            }
-          });
+          git.push(remote, actualBranchName, onComplete);
         }
       });
     } catch (error) {
+      removeAskpassScript(askpassScriptPath);
       reject(error);
     }
   });
@@ -1795,6 +1864,7 @@ module.exports = {
   getBehindCount,
   abortConflictResolution,
   continueMerge,
+  resolveConflict,
   getCommitFiles,
   getCommitFileDiff,
   getCommitCompareFiles,

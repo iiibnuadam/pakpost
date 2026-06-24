@@ -1211,6 +1211,28 @@ export const importWorkspaceAction = (zipFilePath, extractLocation) => {
   };
 };
 
+export const importWorkspaceFromGitAction = (repositoryUrl, extractLocation, processUid) => {
+  return async (dispatch) => {
+    try {
+      const result = await ipcRenderer.invoke('renderer:import-workspace-from-git', repositoryUrl, extractLocation, processUid);
+
+      if (result.success) {
+        dispatch(createWorkspace({
+          uid: result.workspaceUid,
+          pathname: result.workspacePath,
+          ...result.workspaceConfig
+        }));
+
+        await dispatch(switchWorkspace(result.workspaceUid));
+      }
+
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  };
+};
+
 export const saveWorkspaceDotEnvVariables = (workspaceUid, variables, filename = '.env') => (dispatch, getState) => {
   return new Promise((resolve, reject) => {
     const state = getState();

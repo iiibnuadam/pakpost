@@ -73,7 +73,7 @@ const apiSpecWatcher = new ApiSpecWatcher();
 // Reference: https://content-security-policy.com/
 const contentSecurityPolicy = [
   'default-src \'self\'',
-  'connect-src \'self\' https://*.posthog.com',
+  'connect-src \'self\'',
   'font-src \'self\' https: data:;',
   'frame-src data:',
   'script-src \'self\' data:',
@@ -135,7 +135,7 @@ const closeAllWatchers = () => Promise.allSettled([
 // Parse protocol URL from command line arguments (if any)
 appProtocolUrl = getAppProtocolUrlFromArgv(process.argv);
 
-// Single instance lock - ensures only one instance of Bruno runs at a time (enabled by default)
+// Single instance lock - ensures only one instance of PAKPOS runs at a time (enabled by default)
 const useSingleInstance = process.env.DISABLE_SINGLE_INSTANCE !== 'true';
 const gotTheLock = useSingleInstance ? app.requestSingleInstanceLock() : true;
 
@@ -240,7 +240,7 @@ app.on('ready', async () => {
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true
     },
-    title: 'Bruno',
+    title: 'PAKPOS',
     icon: path.join(__dirname, 'about/256x256.png'),
     titleBarStyle: isMac ? 'hiddenInset' : isWindows ? 'hidden' : undefined,
     frame: isLinux ? false : true,

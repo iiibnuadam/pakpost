@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy } from '@tabler/icons';
+import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconBrandGit } from '@tabler/icons';
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useDispatch, useSelector } from 'react-redux';
@@ -8,10 +8,11 @@ import { savePreferences, showManageWorkspacePage, toggleSidebarCollapse } from 
 import { closeConsole, openConsole } from 'providers/ReduxStore/slices/logs';
 import { createWorkspaceWithUniqueName, openWorkspaceDialog, switchWorkspace } from 'providers/ReduxStore/slices/workspaces/actions';
 import { sortWorkspaces, toggleWorkspacePin } from 'utils/workspaces';
-import { focusTab } from 'providers/ReduxStore/slices/tabs';
+import { focusTab, addTab } from 'providers/ReduxStore/slices/tabs';
+import { fetchGitStatus } from 'providers/ReduxStore/slices/git';
+import { uuid } from 'utils/common';
 import get from 'lodash/get';
 
-import Bruno from 'components/Bruno';
 import MenuDropdown from 'ui/MenuDropdown';
 import ActionIcon from 'ui/ActionIcon';
 import IconSidebarToggle from 'components/Icons/IconSidebarToggle';
@@ -116,10 +117,12 @@ const AppTitleBar = () => {
 
   // Get workspace info
   const { workspaces, activeWorkspaceUid } = useSelector((state) => state.workspaces);
+  const tabs = useSelector((state) => state.tabs.tabs);
   const preferences = useSelector((state) => state.app.preferences);
   const sidebarCollapsed = useSelector((state) => state.app.sidebarCollapsed);
   const isConsoleOpen = useSelector((state) => state.logs.isConsoleOpen);
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
+  const gitStatus = useSelector((state) => state.git.collectionGit[activeWorkspace?.uid]?.status);
 
   // Sort workspaces according to preferences
   const sortedWorkspaces = useMemo(() => {
@@ -128,6 +131,24 @@ const AppTitleBar = () => {
 
   const [createWorkspaceModalOpen, setCreateWorkspaceModalOpen] = useState(false);
   const [importWorkspaceModalOpen, setImportWorkspaceModalOpen] = useState(false);
+
+  // Fetch workspace git status periodically for the titlebar badge
+  useEffect(() => {
+    if (!activeWorkspace?.pathname) return;
+
+    const gitTarget = {
+      uid: activeWorkspace.uid,
+      pathname: activeWorkspace.pathname,
+      name: activeWorkspace.name
+    };
+
+    dispatch(fetchGitStatus(gitTarget, { skipLogs: true, silent: true }));
+    const interval = setInterval(() => {
+      dispatch(fetchGitStatus(gitTarget, { skipLogs: true, silent: true }));
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [activeWorkspace?.uid, activeWorkspace?.pathname, activeWorkspace?.name, dispatch]);
 
   const WorkspaceName = forwardRef((props, ref) => {
     return (
@@ -194,6 +215,25 @@ const AppTitleBar = () => {
 
   const handleToggleSidebar = () => {
     dispatch(toggleSidebarCollapse());
+  };
+
+  const handleOpenGitTab = () => {
+    const scratchCollectionUid = activeWorkspace?.scratchCollectionUid;
+    if (!scratchCollectionUid) return;
+
+    const existingTab = tabs.find((t) => t.type === 'git' && t.collectionUid === scratchCollectionUid);
+    if (existingTab) {
+      dispatch(focusTab({ uid: existingTab.uid }));
+      return;
+    }
+
+    dispatch(
+      addTab({
+        uid: uuid(),
+        collectionUid: scratchCollectionUid,
+        type: 'git'
+      })
+    );
   };
 
   const handleToggleDevtools = () => {
@@ -293,10 +333,10 @@ const AppTitleBar = () => {
           </MenuDropdown>
         </div>
 
-        {/* Center section: Bruno logo + text */}
+        {/* Center section: PAKPOS logo + text */}
         <div className="titlebar-center">
-          <Bruno width={18} />
-          <span className="bruno-text">Bruno</span>
+          <img src="assets/pakpos/logo.png" alt="PAKPOS" width={18} height={18} className="pakpos-logo" />
+          <span className="bruno-text">PAKPOS</span>
         </div>
 
         {/* Right section: Action buttons */}
@@ -310,6 +350,23 @@ const AppTitleBar = () => {
               data-testid="toggle-sidebar-button"
             >
               <IconSidebarToggle collapsed={sidebarCollapsed} size={16} strokeWidth={1.5} />
+            </ActionIcon>
+
+            {/* Git - workspace level */}
+            <ActionIcon
+              onClick={handleOpenGitTab}
+              label="Git"
+              size="lg"
+              data-testid="git-button"
+              className="relative"
+            >
+              <IconBrandGit size={16} strokeWidth={1.5} />
+              {gitStatus?.isGitRepo && (gitStatus?.staged?.length > 0 || gitStatus?.unstaged?.length > 0 || gitStatus?.conflicted?.length > 0) && (
+                <span
+                  className="git-change-badge"
+                  style={{ backgroundColor: gitStatus?.conflicted?.length > 0 ? '#ef4444' : '#f59e0b' }}
+                />
+              )}
             </ActionIcon>
 
             {/* Toggle devtools */}

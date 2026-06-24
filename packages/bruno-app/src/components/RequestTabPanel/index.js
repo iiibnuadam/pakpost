@@ -46,6 +46,7 @@ import GlobalEnvironmentSettings from 'components/Environments/GlobalEnvironment
 import OpenAPISyncTab from 'components/OpenAPISyncTab';
 import OpenAPISpecTab from 'components/OpenAPISpecTab';
 import ChangelogTab from 'components/ChangelogTab';
+import GitTab from 'components/Git/GitTab';
 import CollapsedPanelIndicator from './CollapsedPanelIndicator';
 import { clampRequestHeightForResponse } from './paneSize';
 import { IconLoader2 } from '@tabler/icons';
@@ -443,6 +444,10 @@ const RequestTabPanel = () => {
 
   if (focusedTab.type === 'openapi-spec') {
     return <OpenAPISpecTab collection={collection} tabUid={focusedTab.uid} />;
+  }
+
+  if (focusedTab.type === 'git') {
+    return <GitTab workspace={activeWorkspace} />;
   }
 
   if (!item || !item.uid) {

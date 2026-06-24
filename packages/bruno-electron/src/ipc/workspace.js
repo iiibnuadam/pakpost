@@ -5,7 +5,8 @@ const archiver = require('archiver');
 const extractZip = require('extract-zip');
 const { ipcMain, dialog } = require('electron');
 const isDev = require('electron-is-dev');
-const { createDirectory, sanitizeName, writeFile, DEFAULT_GITIGNORE } = require('../utils/filesystem');
+const { createDirectory, sanitizeName, writeFile, DEFAULT_GITIGNORE, removeDirectory } = require('../utils/filesystem');
+const { cloneGitRepository } = require('../utils/git');
 const yaml = require('js-yaml');
 const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
 const { defaultWorkspaceManager } = require('../store/default-workspace');
@@ -421,6 +422,72 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
         throw error;
       }
     } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:import-workspace-from-git', async (event, repositoryUrl, extractLocation, processUid) => {
+    let tempCloneDir = null;
+    try {
+      if (!repositoryUrl) {
+        throw new Error('Repository URL is required');
+      }
+
+      if (!extractLocation || !fs.existsSync(extractLocation)) {
+        throw new Error('Extract location does not exist');
+      }
+
+      const repoName = repositoryUrl.split('/').pop()?.replace(/\.git$/, '') || 'workspace';
+      tempCloneDir = path.join(extractLocation, `_bruno_temp_${Date.now()}`);
+      await fsExtra.ensureDir(tempCloneDir);
+
+      await cloneGitRepository(mainWindow, { url: repositoryUrl, path: tempCloneDir, processUid });
+
+      const workspaceYmlPath = path.join(tempCloneDir, 'workspace.yml');
+      if (!fs.existsSync(workspaceYmlPath)) {
+        throw new Error('Invalid workspace: workspace.yml not found in the repository');
+      }
+
+      const workspaceConfig = yaml.load(fs.readFileSync(workspaceYmlPath, 'utf8'));
+      const workspaceName = workspaceConfig.info?.name || repoName;
+      const sanitizedName = sanitizeName(workspaceName);
+
+      let finalWorkspacePath = path.join(extractLocation, sanitizedName);
+      let counter = 1;
+      while (fs.existsSync(finalWorkspacePath)) {
+        finalWorkspacePath = path.join(extractLocation, `${sanitizedName} (${counter})`);
+        counter++;
+      }
+
+      await fsExtra.move(tempCloneDir, finalWorkspacePath);
+
+      validateWorkspacePath(finalWorkspacePath);
+
+      const finalConfig = readWorkspaceConfig(finalWorkspacePath);
+      validateWorkspaceConfig(finalConfig);
+
+      const workspaceUid = getWorkspaceUid(finalWorkspacePath);
+      const isDefault = workspaceUid === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(finalConfig, finalWorkspacePath, isDefault);
+
+      lastOpenedWorkspaces.add(finalWorkspacePath);
+
+      mainWindow.webContents.send('main:workspace-opened', finalWorkspacePath, workspaceUid, configForClient);
+
+      if (workspaceWatcher) {
+        workspaceWatcher.addWatcher(mainWindow, finalWorkspacePath);
+      }
+
+      return {
+        success: true,
+        workspaceConfig: configForClient,
+        workspaceUid,
+        workspacePath: finalWorkspacePath
+      };
+    } catch (error) {
+      if (tempCloneDir) {
+        await fsExtra.remove(tempCloneDir).catch(() => {});
+      }
       throw error;
     }
   });

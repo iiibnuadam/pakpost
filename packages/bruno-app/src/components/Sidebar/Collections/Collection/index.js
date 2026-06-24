@@ -528,7 +528,7 @@ const Collection = ({ collection, searchText }) => {
           </div>
           {isLoading ? <IconLoader2 className="animate-spin mx-1" size={18} strokeWidth={1.5} /> : null}
         </div>
-        <div>
+        <div className="flex items-center">
           <div className="pr-2">
             <MenuDropdown
               ref={menuDropdownRef}

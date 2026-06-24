@@ -78,7 +78,7 @@ const Wrapper = styled.div`
     }
   }
 
-  /* Center section - Bruno branding */
+  /* Center section - PAKPOS branding */
   .titlebar-center {
     position: absolute;
     left: 50%;
@@ -87,6 +87,11 @@ const Wrapper = styled.div`
     align-items: center;
     gap: 6px;
     pointer-events: none;
+
+    .pakpos-logo {
+      object-fit: contain;
+      border-radius: 3px;
+    }
 
     .bruno-text {
       font-size: 13px;
@@ -109,6 +114,15 @@ const Wrapper = styled.div`
   .titlebar-actions {
     display: flex;
     align-items: center;
+  }
+
+  .git-change-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
   }
 
   /* Workspace Dropdown Styles */
