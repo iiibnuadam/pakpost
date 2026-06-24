@@ -9,7 +9,8 @@ const {
   generateYamlContent,
   readWorkspaceConfig,
   validateWorkspaceConfig,
-  isValidCollectionEntry
+  isValidCollectionEntry,
+  getWorkspaceReadmeContent
 } = require('../utils/workspace-config');
 
 const OPENCOLLECTION_VERSION = '1.0.0';
@@ -245,6 +246,8 @@ class DefaultWorkspaceManager {
     fs.mkdirSync(workspacePath, { recursive: true });
     fs.mkdirSync(path.join(workspacePath, 'collections'), { recursive: true });
     fs.mkdirSync(path.join(workspacePath, 'environments'), { recursive: true });
+
+    fs.writeFileSync(path.join(workspacePath, 'README.md'), getWorkspaceReadmeContent('My Workspace'));
 
     const workspaceConfig = {
       opencollection: OPENCOLLECTION_VERSION,

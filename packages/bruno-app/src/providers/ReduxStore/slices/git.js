@@ -388,15 +388,15 @@ const isAuthError = (error) => {
   const message = typeof error === 'string' ? error : error.message || '';
   const lower = message.toLowerCase();
   return (
-    lower.includes('authentication') ||
-    lower.includes('credential') ||
-    lower.includes('401') ||
-    lower.includes('403') ||
-    lower.includes('Unauthorized'.toLowerCase()) ||
-    lower.includes('Forbidden'.toLowerCase()) ||
-    lower.includes('could not resolve password') ||
-    lower.includes('could not resolve username') ||
-    lower.includes('terminal prompts disabled')
+    lower.includes('authentication')
+    || lower.includes('credential')
+    || lower.includes('401')
+    || lower.includes('403')
+    || lower.includes('Unauthorized'.toLowerCase())
+    || lower.includes('Forbidden'.toLowerCase())
+    || lower.includes('could not resolve password')
+    || lower.includes('could not resolve username')
+    || lower.includes('terminal prompts disabled')
   );
 };
 
@@ -405,13 +405,13 @@ const isBehindError = (error) => {
   const message = typeof error === 'string' ? error : error.message || '';
   const lower = message.toLowerCase();
   return (
-    lower.includes('non-fast-forward') ||
-    lower.includes('rejected') ||
-    lower.includes('failed to push') ||
-    lower.includes('cannot fast-forward') ||
-    lower.includes('not possible to fast-forward') ||
-    lower.includes('would be overwritten') ||
-    lower.includes('remote contains work')
+    lower.includes('non-fast-forward')
+    || lower.includes('rejected')
+    || lower.includes('failed to push')
+    || lower.includes('cannot fast-forward')
+    || lower.includes('not possible to fast-forward')
+    || lower.includes('would be overwritten')
+    || lower.includes('remote contains work')
   );
 };
 
@@ -420,10 +420,10 @@ const isConflictError = (error) => {
   const message = typeof error === 'string' ? error : error.message || '';
   const lower = message.toLowerCase();
   return (
-    lower.includes('conflict') ||
-    lower.includes('merge conflict') ||
-    lower.includes('unmerged') ||
-    lower.includes('could not apply')
+    lower.includes('conflict')
+    || lower.includes('merge conflict')
+    || lower.includes('unmerged')
+    || lower.includes('could not apply')
   );
 };
 

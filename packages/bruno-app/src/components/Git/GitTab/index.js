@@ -139,7 +139,6 @@ const GitTab = ({ workspace }) => {
     if (activeTab === 'history' && status?.isGitRepo) {
       dispatch(fetchGitStatus(gitTarget));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, gitTarget, dispatch]);
 
   const handleHistoryResizeMove = useCallback((e) => {

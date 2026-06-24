@@ -30,7 +30,8 @@ const {
   normalizeCollectionEntry,
   validateWorkspacePath,
   validateWorkspaceDirectory,
-  getWorkspaceUid
+  getWorkspaceUid,
+  getWorkspaceReadmeContent
 } = require('../utils/workspace-config');
 
 const DEFAULT_WORKSPACE_NAME = 'My Workspace';
@@ -81,6 +82,7 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
 
         await writeWorkspaceConfig(dirPath, workspaceConfig);
         await writeFile(path.join(dirPath, '.gitignore'), DEFAULT_GITIGNORE);
+        await writeFile(path.join(dirPath, 'README.md'), getWorkspaceReadmeContent(workspaceName));
 
         lastOpenedWorkspaces.add(dirPath);
 

@@ -13,6 +13,34 @@ const OPENCOLLECTION_VERSION = '1.0.0';
 const GITIGNORE_MANAGED_BLOCK_START = '# Bruno managed collection remotes';
 const GITIGNORE_MANAGED_BLOCK_END = '# End Bruno managed collection remotes';
 
+const getWorkspaceReadmeContent = (workspaceName = 'My Workspace') => `\
+# ${workspaceName}
+
+This is a PAKPOS workspace directory.
+
+## Structure
+
+- \`collections/\` — contains your API request collections (one folder per collection).
+- \`environments/\` — contains environment variables used across collections.
+- \`workspace.yml\` — workspace metadata managed by PAKPOS. Do not edit manually.
+
+## Git behavior
+
+This workspace is designed to work with Git:
+
+- **Auto commit on save**: every time you save a request, collection, or environment, PAKPOS can automatically stage and commit the change.
+- **Auto push**: after a successful commit, PAKPOS can push to the configured remote.
+- **Auto pull**: PAKPOS can periodically pull from the remote to keep you in sync.
+- **Conflicts**: if a pull or merge produces conflicts, conflicted files appear in Git → Changes → Conflicted. You can resolve each file by choosing **Ours** (your local version) or **Theirs** (the remote version), or abort the merge with **Abort merge**.
+
+You can enable/disable these behaviors from the Git panel inside the app.
+
+## Notes
+
+- Do not delete \`workspace.yml\` or the \`.gitignore\` file; they are required for the workspace to function.
+- If you open this workspace on another machine, make sure Git credentials are configured in the app (Git panel → Set credentials).
+`;
+
 const quoteYamlValue = (value) => {
   if (typeof value !== 'string') {
     return `"${String(value)}"`;
@@ -713,5 +741,6 @@ module.exports = {
   getWorkspaceUid,
   writeWorkspaceFileAtomic,
   isValidCollectionEntry,
-  isValidSpecEntry
+  isValidSpecEntry,
+  getWorkspaceReadmeContent
 };
