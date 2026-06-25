@@ -1,10 +1,96 @@
 const { marshallToVm } = require('../utils');
 const { createPropertyListBridge } = require('../utils/property-list-bridge');
 
+const createUrlShim = (vm, req) => {
+  const urlObject = vm.newObject();
+  const url = req.getUrl();
+  const query = url.query;
+
+  const queryObject = vm.newObject();
+
+  const addFn = vm.newFunction('add', function (param) {
+    query.add(vm.dump(param));
+  });
+  vm.setProp(queryObject, 'add', addFn);
+  addFn.dispose();
+
+  const updateFn = vm.newFunction('update', function (param) {
+    query.update(vm.dump(param));
+  });
+  vm.setProp(queryObject, 'update', updateFn);
+  updateFn.dispose();
+
+  const removeFn = vm.newFunction('remove', function (key) {
+    query.remove(vm.dump(key));
+  });
+  vm.setProp(queryObject, 'remove', removeFn);
+  removeFn.dispose();
+
+  const getFn = vm.newFunction('get', function (key) {
+    const result = query.get(vm.dump(key));
+    return marshallToVm(result ? { key: result.key, value: result.value } : null, vm);
+  });
+  vm.setProp(queryObject, 'get', getFn);
+  getFn.dispose();
+
+  const clearFn = vm.newFunction('clear', function () {
+    query.clear();
+  });
+  vm.setProp(queryObject, 'clear', clearFn);
+  clearFn.dispose();
+
+  const countFn = vm.newFunction('count', function () {
+    return vm.newNumber(query.count());
+  });
+  vm.setProp(queryObject, 'count', countFn);
+  countFn.dispose();
+
+  const eachFn = vm.newFunction('each', function (callback) {
+    query.each((p, index) => {
+      const paramObj = vm.newObject();
+      vm.setProp(paramObj, 'key', vm.newString(p.key));
+      vm.setProp(paramObj, 'value', vm.newString(p.value));
+      vm.callFunction(callback, vm.global, paramObj, vm.newNumber(index));
+      paramObj.dispose();
+    });
+  });
+  vm.setProp(queryObject, 'each', eachFn);
+  eachFn.dispose();
+
+  const toObjectFn = vm.newFunction('toObject', function () {
+    return marshallToVm(query.toObject(), vm);
+  });
+  vm.setProp(queryObject, 'toObject', toObjectFn);
+  toObjectFn.dispose();
+
+  const toStringFn = vm.newFunction('toString', function () {
+    return vm.newString(query.toString());
+  });
+  vm.setProp(queryObject, 'toString', toStringFn);
+  toStringFn.dispose();
+
+  const allFn = vm.newFunction('all', function () {
+    return marshallToVm(query.all(), vm);
+  });
+  vm.setProp(queryObject, 'all', allFn);
+  allFn.dispose();
+
+  vm.setProp(urlObject, 'query', queryObject);
+  queryObject.dispose();
+
+  const urlToStringFn = vm.newFunction('toString', function () {
+    return vm.newString(url.toString());
+  });
+  vm.setProp(urlObject, 'toString', urlToStringFn);
+  urlToStringFn.dispose();
+
+  return urlObject;
+};
+
 const addBrunoRequestShimToContext = (vm, req) => {
   const reqObject = vm.newObject();
 
-  const url = marshallToVm(req.getUrl(), vm);
+  const url = marshallToVm(req.url, vm);
   const method = marshallToVm(req.getMethod(), vm);
   const body = marshallToVm(req.getBody(), vm);
   const timeout = marshallToVm(req.getTimeout(), vm);
@@ -46,7 +132,7 @@ const addBrunoRequestShimToContext = (vm, req) => {
   headerListObj.dispose();
 
   let getUrl = vm.newFunction('getUrl', function () {
-    return marshallToVm(req.getUrl(), vm);
+    return createUrlShim(vm, req);
   });
   vm.setProp(reqObject, 'getUrl', getUrl);
   getUrl.dispose();

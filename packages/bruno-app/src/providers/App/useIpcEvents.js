@@ -25,7 +25,7 @@ import {
   streamDataReceived,
   setDotEnvVariables
 } from 'providers/ReduxStore/slices/collections';
-import { collectionAddEnvFileEvent, openCollectionEvent, hydrateCollectionWithUiStateSnapshot, mergeAndPersistEnvironment } from 'providers/ReduxStore/slices/collections/actions';
+import { collectionAddEnvFileEvent, openCollectionEvent, hydrateCollectionWithUiStateSnapshot, mergeAndPersistEnvironment, applyScriptEnvironmentUpdate } from 'providers/ReduxStore/slices/collections/actions';
 import {
   workspaceOpenedEvent,
   workspaceConfigUpdatedEvent,
@@ -202,7 +202,7 @@ const useIpcEvents = () => {
     });
 
     const removeScriptEnvUpdateListener = ipcRenderer.on('main:script-environment-update', (val) => {
-      dispatch(scriptEnvironmentUpdateEvent(val));
+      dispatch(applyScriptEnvironmentUpdate(val));
     });
 
     const removePersistentEnvVariablesUpdateListener = ipcRenderer.on('main:persistent-env-variables-update', (val) => {

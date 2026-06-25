@@ -43,6 +43,27 @@ class BrunoResponse {
     return this.res ? this.res.data : null;
   }
 
+  getJson() {
+    if (!this.res) {
+      return null;
+    }
+    const data = this.res.data;
+    if (data === null || data === undefined) {
+      return null;
+    }
+    if (typeof data === 'object') {
+      return data;
+    }
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data.replace(/^\uFEFF/, ''));
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   getResponseTime() {
     return this.res ? this.res.responseTime : null;
   }

@@ -1,4 +1,5 @@
 const HeaderList = require('./header-list');
+const { Url } = require('./url');
 
 class BrunoRequest {
   /**
@@ -38,7 +39,7 @@ class BrunoRequest {
   }
 
   getUrl() {
-    return this.req.url;
+    return new Url(this.req);
   }
 
   setUrl(url) {

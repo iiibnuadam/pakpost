@@ -30,11 +30,12 @@ const config = {
       }
     ],
     icon: 'resources/icons/mac/icon.icns',
-    hardenedRuntime: true,
+    hardenedRuntime: false,
     identity: null,
     entitlements: 'resources/entitlements.mac.plist',
     entitlementsInherit: 'resources/entitlements.mac.plist',
     notarize: false,
+    gatekeeperAssess: false,
     protocols: [
       {
         name: 'PAKPOS',

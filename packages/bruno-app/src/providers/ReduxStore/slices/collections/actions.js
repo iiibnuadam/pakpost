@@ -2309,9 +2309,41 @@ export const updateVariableInScope = (variableName, newValue, scopeInfo, collect
   });
 };
 
+export const applyScriptEnvironmentUpdate = ({ envVariables, runtimeVariables, persistentEnvVariables, requestUid, collectionUid }) => (dispatch, getState) => {
+  const state = getState();
+  const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  const globalEnvironments = state.globalEnvironments?.globalEnvironments || [];
+  const activeGlobalEnvUid = state.globalEnvironments?.activeGlobalEnvironmentUid;
+
+  // If a collection environment is active, apply to it
+  if (collection && collection.activeEnvironmentUid) {
+    const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
+    if (environment) {
+      dispatch(
+        scriptEnvironmentUpdateEvent({
+          collectionUid,
+          envVariables,
+          runtimeVariables,
+          persistentEnvVariables
+        })
+      );
+      return;
+    }
+  }
+
+  // Otherwise fall back to the active global environment
+  if (activeGlobalEnvUid) {
+    dispatch(
+      globalEnvironmentsUpdateEvent({
+        globalEnvironmentVariables: envVariables
+      })
+    );
+  }
+};
+
 export const mergeAndPersistEnvironment
   = ({ persistentEnvVariables, collectionUid }) =>
-    (_dispatch, getState) => {
+    (dispatch, getState) => {
       return new Promise((resolve, reject) => {
         const state = getState();
         const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -2321,7 +2353,62 @@ export const mergeAndPersistEnvironment
         }
 
         const environmentUid = collection.activeEnvironmentUid;
+        const globalEnvironments = state.globalEnvironments?.globalEnvironments || [];
+        const activeGlobalEnvUid = state.globalEnvironments?.activeGlobalEnvironmentUid;
+
+        // If the active environment is a global environment, persist to global
+        if (environmentUid && activeGlobalEnvUid && environmentUid === activeGlobalEnvUid) {
+          const globalEnvironment = globalEnvironments.find((env) => env.uid === activeGlobalEnvUid);
+          if (globalEnvironment && persistentEnvVariables && Object.keys(persistentEnvVariables).length > 0) {
+            const variables = cloneDeep(globalEnvironment.variables || []);
+            Object.entries(persistentEnvVariables).forEach(([name, value]) => {
+              const existing = variables.find((v) => v.name === name);
+              if (existing) {
+                existing.value = value;
+              } else {
+                variables.push({
+                  uid: uuid(),
+                  name,
+                  value,
+                  type: 'text',
+                  enabled: true,
+                  secret: false
+                });
+              }
+            });
+            return dispatch(saveGlobalEnvironment({ environmentUid: activeGlobalEnvUid, variables }))
+              .then(resolve)
+              .catch(reject);
+          }
+          return resolve();
+        }
+
         if (!environmentUid) {
+          // Fall back to global environment if no collection environment is active
+          const globalEnvironment = activeGlobalEnvUid ? globalEnvironments.find((env) => env.uid === activeGlobalEnvUid) : null;
+
+          if (globalEnvironment && persistentEnvVariables && Object.keys(persistentEnvVariables).length > 0) {
+            const variables = cloneDeep(globalEnvironment.variables || []);
+            Object.entries(persistentEnvVariables).forEach(([name, value]) => {
+              const existing = variables.find((v) => v.name === name);
+              if (existing) {
+                existing.value = value;
+              } else {
+                variables.push({
+                  uid: uuid(),
+                  name,
+                  value,
+                  type: 'text',
+                  enabled: true,
+                  secret: false
+                });
+              }
+            });
+            return dispatch(saveGlobalEnvironment({ environmentUid: activeGlobalEnvUid, variables }))
+              .then(resolve)
+              .catch(reject);
+          }
+
           return reject(new Error('No active environment found'));
         }
 
@@ -2380,7 +2467,10 @@ export const mergeAndPersistEnvironment
         environmentSchema
           .validate(environmentToSave)
           .then(() => ipcRenderer.invoke('renderer:save-environment', collection.pathname, environmentToSave))
-          .then(resolve)
+          .then(() => {
+            dispatch(_saveEnvironment({ collectionUid, environmentUid, variables: environmentToSave.variables }));
+            resolve();
+          })
           .catch(reject);
       });
     };
