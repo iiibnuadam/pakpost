@@ -1,6 +1,6 @@
 <br />
 <p align="center">
-  <img src="assets/pakpost/logo.png" width="80" alt="Pakpost logo"/>
+  <img src="assets/images/logo.png" width="80" alt="Pakpost logo"/>
 </p>
 
 <h3 align="center">Pakpost — API Client untuk menguji dan mengeksplorasi API.</h3>
