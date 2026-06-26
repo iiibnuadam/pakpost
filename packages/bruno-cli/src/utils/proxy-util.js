@@ -1,0 +1,184 @@
+const parseUrl = require('url').parse;
+const http = require('node:http');
+const https = require('node:https');
+const { isEmpty, get, isUndefined, isNull } = require('lodash');
+const { HttpProxyAgent } = require('http-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
+const {
+  getOrCreateHttpsAgent,
+  getOrCreateHttpAgent,
+  resolveAgentsFromPac,
+  PatchedHttpsProxyAgent
+} = require('@usebruno/requests');
+const { interpolateString } = require('../runner/interpolate-string');
+
+const DEFAULT_PORTS = {
+  ftp: 21,
+  gopher: 70,
+  http: 80,
+  https: 443,
+  ws: 80,
+  wss: 443
+};
+/**
+ * check for proxy bypass, copied form 'proxy-from-env'
+ */
+const shouldUseProxy = (url, proxyBypass) => {
+  if (proxyBypass === '*') {
+    return false; // Never proxy if wildcard is set.
+  }
+
+  // use proxy if no proxyBypass is set
+  if (!proxyBypass || typeof proxyBypass !== 'string' || isEmpty(proxyBypass.trim())) {
+    return true;
+  }
+
+  const parsedUrl = typeof url === 'string' ? parseUrl(url) : url || {};
+  let proto = parsedUrl.protocol;
+  let hostname = parsedUrl.host;
+  let port = parsedUrl.port;
+  if (typeof hostname !== 'string' || !hostname || typeof proto !== 'string') {
+    return false; // Don't proxy URLs without a valid scheme or host.
+  }
+
+  proto = proto.split(':', 1)[0];
+  // Stripping ports in this way instead of using parsedUrl.hostname to make
+  // sure that the brackets around IPv6 addresses are kept.
+  hostname = hostname.replace(/:\d*$/, '');
+  port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
+
+  return proxyBypass.split(/[,;\s]/).every(function (dontProxyFor) {
+    if (!dontProxyFor) {
+      return true; // Skip zero-length hosts.
+    }
+    const parsedProxy = dontProxyFor.match(/^(.+):(\d+)$/);
+    let parsedProxyHostname = parsedProxy ? parsedProxy[1] : dontProxyFor;
+    const parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
+    if (parsedProxyPort && parsedProxyPort !== port) {
+      return true; // Skip if ports don't match.
+    }
+
+    if (!/^[.*]/.test(parsedProxyHostname)) {
+      // No wildcards, so stop proxying if there is an exact match.
+      return hostname !== parsedProxyHostname;
+    }
+
+    if (parsedProxyHostname.charAt(0) === '*') {
+      // Remove leading wildcard.
+      parsedProxyHostname = parsedProxyHostname.slice(1);
+    }
+    // Stop proxying if the hostname ends with the no_proxy host.
+    return !hostname.endsWith(parsedProxyHostname);
+  });
+};
+
+async function setupProxyAgents({
+  requestConfig,
+  proxyMode = 'off',
+  proxyConfig,
+  systemProxyConfig,
+  httpsAgentRequestFields,
+  interpolationOptions,
+  disableCache = true
+}) {
+  // Clear stale agents so we always recreate them for the current URL
+  // (handles protocol switches, host changes, and proxy-bypass rules on redirects).
+  delete requestConfig.httpAgent;
+  delete requestConfig.httpsAgent;
+
+  const tlsOptions = { ...httpsAgentRequestFields };
+  const httpAgentOptions = { keepAlive: true };
+
+  const parsedRequestUrl = new URL(requestConfig.url);
+  const isHttpsRequest = parsedRequestUrl.protocol === 'https:';
+  const hostname = parsedRequestUrl.hostname || null;
+
+  if (proxyMode === 'on') {
+    const shouldProxy = shouldUseProxy(requestConfig.url, get(proxyConfig, 'bypassProxy', ''));
+    if (shouldProxy) {
+      const proxyProtocol = interpolateString(get(proxyConfig, 'protocol'), interpolationOptions);
+      const proxyHostname = interpolateString(get(proxyConfig, 'hostname'), interpolationOptions);
+      const proxyPort = interpolateString(get(proxyConfig, 'port'), interpolationOptions);
+      const proxyAuthEnabled = !get(proxyConfig, 'auth.disabled', false);
+      const socksEnabled = proxyProtocol?.includes('socks') ?? false;
+      let uriPort = isUndefined(proxyPort) || isNull(proxyPort) ? '' : `:${proxyPort}`;
+      let proxyUri;
+      if (proxyAuthEnabled) {
+        const proxyAuthUsername = encodeURIComponent(interpolateString(get(proxyConfig, 'auth.username'), interpolationOptions));
+        const proxyAuthPassword = encodeURIComponent(interpolateString(get(proxyConfig, 'auth.password'), interpolationOptions));
+
+        proxyUri = `${proxyProtocol}://${proxyAuthUsername}:${proxyAuthPassword}@${proxyHostname}${uriPort}`;
+      } else {
+        proxyUri = `${proxyProtocol}://${proxyHostname}${uriPort}`;
+      }
+      // When the proxy itself uses HTTPS, the agent connecting to it needs TLS options
+      // (e.g., ca certs) even for plain HTTP requests
+      const isHttpsProxy = proxyProtocol === 'https';
+      const httpProxyAgentOptions = isHttpsProxy ? { ...httpAgentOptions, ...tlsOptions } : httpAgentOptions;
+
+      // Only set the agent needed for the request protocol
+      if (socksEnabled) {
+        if (isHttpsRequest) {
+          requestConfig.httpsAgent = getOrCreateHttpsAgent({ AgentClass: SocksProxyAgent, options: tlsOptions, proxyUri, disableCache, hostname });
+        } else {
+          requestConfig.httpAgent = getOrCreateHttpAgent({ AgentClass: SocksProxyAgent, options: httpProxyAgentOptions, proxyUri, disableCache, hostname });
+        }
+      } else {
+        if (isHttpsRequest) {
+          requestConfig.httpsAgent = getOrCreateHttpsAgent({ AgentClass: PatchedHttpsProxyAgent, options: tlsOptions, proxyUri, disableCache, hostname });
+        } else {
+          requestConfig.httpAgent = getOrCreateHttpAgent({ AgentClass: HttpProxyAgent, options: httpProxyAgentOptions, proxyUri, disableCache, hostname });
+        }
+      }
+    }
+  } else if (proxyMode === 'system') {
+    try {
+      const { http_proxy, https_proxy, no_proxy, pac_url } = systemProxyConfig || {};
+
+      // If the OS is configured with a PAC URL, resolve it using the existing PAC infrastructure
+      if (pac_url) {
+        try {
+          const { httpAgent, httpsAgent } = await resolveAgentsFromPac({ pacSource: pac_url, requestUrl: requestConfig.url, requestProtocol: isHttpsRequest ? 'https' : 'http', tlsOptions, httpsAgentRequestFields, disableCache, hostname });
+          if (httpAgent) requestConfig.httpAgent = httpAgent;
+          if (httpsAgent) requestConfig.httpsAgent = httpsAgent;
+        } catch (error) {}
+      } else {
+        const shouldUseSystemProxy = shouldUseProxy(requestConfig.url, no_proxy || '');
+        if (shouldUseSystemProxy) {
+          try {
+            if (http_proxy?.length && !isHttpsRequest) {
+              const parsedHttpProxy = new URL(http_proxy);
+              const isHttpsSystemProxy = parsedHttpProxy.protocol === 'https:';
+              const systemHttpProxyAgentOptions = isHttpsSystemProxy ? { ...httpAgentOptions, ...tlsOptions } : httpAgentOptions;
+              requestConfig.httpAgent = getOrCreateHttpAgent({ AgentClass: HttpProxyAgent, options: systemHttpProxyAgentOptions, proxyUri: http_proxy, disableCache, hostname });
+            }
+          } catch (error) {
+            throw new Error('Invalid system http_proxy');
+          }
+          try {
+            if (https_proxy?.length && isHttpsRequest) {
+              new URL(https_proxy);
+              requestConfig.httpsAgent = getOrCreateHttpsAgent({ AgentClass: PatchedHttpsProxyAgent, options: tlsOptions, proxyUri: https_proxy, disableCache, hostname });
+            }
+          } catch (error) {
+            throw new Error('Invalid system https_proxy');
+          }
+        }
+      }
+    } catch (error) {}
+  }
+
+  if (!requestConfig.httpAgent && !requestConfig.httpsAgent) {
+    if (isHttpsRequest) {
+      requestConfig.httpsAgent = getOrCreateHttpsAgent({ AgentClass: https.Agent, options: tlsOptions, disableCache, hostname });
+    } else {
+      requestConfig.httpAgent = getOrCreateHttpAgent({ AgentClass: http.Agent, options: httpAgentOptions, disableCache, hostname });
+    }
+  }
+}
+
+module.exports = {
+  shouldUseProxy,
+  PatchedHttpsProxyAgent,
+  setupProxyAgents
+};

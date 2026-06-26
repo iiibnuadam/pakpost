@@ -1,0 +1,289 @@
+const { marshallToVm } = require('../utils');
+const { createPropertyListBridge } = require('../utils/property-list-bridge');
+
+const createUrlShim = (vm, req) => {
+  const urlObject = vm.newObject();
+  const url = req.getUrl();
+  const query = url.query;
+
+  const queryObject = vm.newObject();
+
+  const addFn = vm.newFunction('add', function (param) {
+    query.add(vm.dump(param));
+  });
+  vm.setProp(queryObject, 'add', addFn);
+  addFn.dispose();
+
+  const updateFn = vm.newFunction('update', function (param) {
+    query.update(vm.dump(param));
+  });
+  vm.setProp(queryObject, 'update', updateFn);
+  updateFn.dispose();
+
+  const removeFn = vm.newFunction('remove', function (key) {
+    query.remove(vm.dump(key));
+  });
+  vm.setProp(queryObject, 'remove', removeFn);
+  removeFn.dispose();
+
+  const getFn = vm.newFunction('get', function (key) {
+    const result = query.get(vm.dump(key));
+    return marshallToVm(result ? { key: result.key, value: result.value } : null, vm);
+  });
+  vm.setProp(queryObject, 'get', getFn);
+  getFn.dispose();
+
+  const clearFn = vm.newFunction('clear', function () {
+    query.clear();
+  });
+  vm.setProp(queryObject, 'clear', clearFn);
+  clearFn.dispose();
+
+  const countFn = vm.newFunction('count', function () {
+    return vm.newNumber(query.count());
+  });
+  vm.setProp(queryObject, 'count', countFn);
+  countFn.dispose();
+
+  const eachFn = vm.newFunction('each', function (callback) {
+    query.each((p, index) => {
+      const paramObj = vm.newObject();
+      vm.setProp(paramObj, 'key', vm.newString(p.key));
+      vm.setProp(paramObj, 'value', vm.newString(p.value));
+      vm.callFunction(callback, vm.global, paramObj, vm.newNumber(index));
+      paramObj.dispose();
+    });
+  });
+  vm.setProp(queryObject, 'each', eachFn);
+  eachFn.dispose();
+
+  const toObjectFn = vm.newFunction('toObject', function () {
+    return marshallToVm(query.toObject(), vm);
+  });
+  vm.setProp(queryObject, 'toObject', toObjectFn);
+  toObjectFn.dispose();
+
+  const toStringFn = vm.newFunction('toString', function () {
+    return vm.newString(query.toString());
+  });
+  vm.setProp(queryObject, 'toString', toStringFn);
+  toStringFn.dispose();
+
+  const allFn = vm.newFunction('all', function () {
+    return marshallToVm(query.all(), vm);
+  });
+  vm.setProp(queryObject, 'all', allFn);
+  allFn.dispose();
+
+  vm.setProp(urlObject, 'query', queryObject);
+  queryObject.dispose();
+
+  const urlToStringFn = vm.newFunction('toString', function () {
+    return vm.newString(url.toString());
+  });
+  vm.setProp(urlObject, 'toString', urlToStringFn);
+  urlToStringFn.dispose();
+
+  return urlObject;
+};
+
+const addBrunoRequestShimToContext = (vm, req) => {
+  const reqObject = vm.newObject();
+
+  const url = marshallToVm(req.url, vm);
+  const method = marshallToVm(req.getMethod(), vm);
+  const body = marshallToVm(req.getBody(), vm);
+  const timeout = marshallToVm(req.getTimeout(), vm);
+  const name = marshallToVm(req.getName(), vm);
+  const pathParams = marshallToVm(req.getPathParams(), vm);
+  const tags = marshallToVm(req.getTags(), vm);
+
+  vm.setProp(reqObject, 'url', url);
+  vm.setProp(reqObject, 'method', method);
+  vm.setProp(reqObject, 'body', body);
+  vm.setProp(reqObject, 'timeout', timeout);
+  vm.setProp(reqObject, 'name', name);
+  vm.setProp(reqObject, 'pathParams', pathParams);
+  vm.setProp(reqObject, 'tags', tags);
+
+  url.dispose();
+  method.dispose();
+  body.dispose();
+  timeout.dispose();
+  name.dispose();
+  pathParams.dispose();
+  tags.dispose();
+
+  // req.headers — plain headers object for backward-compatible bracket access
+  const headersVal = marshallToVm(req.getHeaders(), vm);
+  vm.setProp(reqObject, 'headers', headersVal);
+  headersVal.dispose();
+
+  // req.headerList — PropertyList bridge for structured header operations
+  const headerListObj = vm.newObject();
+  const { evalCode: headersEvalCode } = createPropertyListBridge(vm, req.headerList, headerListObj, {
+    globalPath: 'globalThis.req.headerList',
+    syncReadMethods: ['get', 'has', 'count', 'indexOf', 'toObject', 'toString'],
+    syncReadObjectMethods: ['one', 'all', 'toJSON'],
+    syncWriteMethods: ['add', 'upsert', 'remove', 'clear', 'populate', 'repopulate', 'assimilate'],
+    withIterators: true
+  });
+  vm.setProp(reqObject, 'headerList', headerListObj);
+  headerListObj.dispose();
+
+  let getUrl = vm.newFunction('getUrl', function () {
+    return createUrlShim(vm, req);
+  });
+  vm.setProp(reqObject, 'getUrl', getUrl);
+  getUrl.dispose();
+
+  let setUrl = vm.newFunction('setUrl', function (url) {
+    req.setUrl(vm.dump(url));
+  });
+  vm.setProp(reqObject, 'setUrl', setUrl);
+  setUrl.dispose();
+
+  let getHost = vm.newFunction('getHost', function () {
+    return marshallToVm(req.getHost(), vm);
+  });
+  vm.setProp(reqObject, 'getHost', getHost);
+  getHost.dispose();
+
+  let getPath = vm.newFunction('getPath', function () {
+    return marshallToVm(req.getPath(), vm);
+  });
+  vm.setProp(reqObject, 'getPath', getPath);
+  getPath.dispose();
+
+  let getQueryString = vm.newFunction('getQueryString', function () {
+    return marshallToVm(req.getQueryString(), vm);
+  });
+  vm.setProp(reqObject, 'getQueryString', getQueryString);
+  getQueryString.dispose();
+
+  let getMethod = vm.newFunction('getMethod', function () {
+    return marshallToVm(req.getMethod(), vm);
+  });
+  vm.setProp(reqObject, 'getMethod', getMethod);
+  getMethod.dispose();
+
+  let getAuthMode = vm.newFunction('getAuthMode', function () {
+    return marshallToVm(req.getAuthMode(), vm);
+  });
+  vm.setProp(reqObject, 'getAuthMode', getAuthMode);
+  getAuthMode.dispose();
+
+  let getName = vm.newFunction('getName', function () {
+    return marshallToVm(req.getName(), vm);
+  });
+  vm.setProp(reqObject, 'getName', getName);
+  getName.dispose();
+
+  let getPathParams = vm.newFunction('getPathParams', function () {
+    return marshallToVm(req.getPathParams(), vm);
+  });
+  vm.setProp(reqObject, 'getPathParams', getPathParams);
+  getPathParams.dispose();
+
+  let setMethod = vm.newFunction('setMethod', function (method) {
+    req.setMethod(vm.dump(method));
+  });
+  vm.setProp(reqObject, 'setMethod', setMethod);
+  setMethod.dispose();
+
+  let getHeaders = vm.newFunction('getHeaders', function () {
+    return marshallToVm(req.getHeaders(), vm);
+  });
+  vm.setProp(reqObject, 'getHeaders', getHeaders);
+  getHeaders.dispose();
+
+  let setHeaders = vm.newFunction('setHeaders', function (headers) {
+    req.setHeaders(vm.dump(headers));
+  });
+  vm.setProp(reqObject, 'setHeaders', setHeaders);
+  setHeaders.dispose();
+
+  let deleteHeaders = vm.newFunction('deleteHeaders', function (headers) {
+    req.deleteHeaders(vm.dump(headers));
+  });
+  vm.setProp(reqObject, 'deleteHeaders', deleteHeaders);
+  deleteHeaders.dispose();
+
+  let getHeader = vm.newFunction('getHeader', function (name) {
+    return marshallToVm(req.getHeader(vm.dump(name)), vm);
+  });
+  vm.setProp(reqObject, 'getHeader', getHeader);
+  getHeader.dispose();
+
+  let setHeader = vm.newFunction('setHeader', function (name, value) {
+    req.setHeader(vm.dump(name), vm.dump(value));
+  });
+  vm.setProp(reqObject, 'setHeader', setHeader);
+  setHeader.dispose();
+
+  let deleteHeader = vm.newFunction('deleteHeader', function (header) {
+    req.deleteHeader(vm.dump(header));
+  });
+  vm.setProp(reqObject, 'deleteHeader', deleteHeader);
+  deleteHeader.dispose();
+
+  let getBody = vm.newFunction('getBody', function (options = {}) {
+    return marshallToVm(req.getBody(vm.dump(options)), vm);
+  });
+
+  vm.setProp(reqObject, 'getBody', getBody);
+  getBody.dispose();
+
+  let setBody = vm.newFunction('setBody', function (data, options = {}) {
+    req.setBody(vm.dump(data), vm.dump(options));
+  });
+  vm.setProp(reqObject, 'setBody', setBody);
+  setBody.dispose();
+
+  let setMaxRedirects = vm.newFunction('setMaxRedirects', function (maxRedirects) {
+    req.setMaxRedirects(vm.dump(maxRedirects));
+  });
+  vm.setProp(reqObject, 'setMaxRedirects', setMaxRedirects);
+  setMaxRedirects.dispose();
+
+  let getTimeout = vm.newFunction('getTimeout', function () {
+    return marshallToVm(req.getTimeout(), vm);
+  });
+  vm.setProp(reqObject, 'getTimeout', getTimeout);
+  getTimeout.dispose();
+
+  let setTimeout = vm.newFunction('setTimeout', function (timeout) {
+    req.setTimeout(vm.dump(timeout));
+  });
+  vm.setProp(reqObject, 'setTimeout', setTimeout);
+  setTimeout.dispose();
+
+  let disableParsingResponseJson = vm.newFunction('disableParsingResponseJson', function () {
+    req.disableParsingResponseJson();
+  });
+  vm.setProp(reqObject, 'disableParsingResponseJson', disableParsingResponseJson);
+  disableParsingResponseJson.dispose();
+
+  let getExecutionMode = vm.newFunction('getExecutionMode', function () {
+    return marshallToVm(req.getExecutionMode(), vm);
+  });
+  vm.setProp(reqObject, 'getExecutionMode', getExecutionMode);
+  getExecutionMode.dispose();
+
+  let getTags = vm.newFunction('getTags', function () {
+    return marshallToVm(req.getTags(), vm);
+  });
+  vm.setProp(reqObject, 'getTags', getTags);
+  getTags.dispose();
+
+  vm.setProp(vm.global, 'req', reqObject);
+  reqObject.dispose();
+
+  // Evaluate iterator code after req is on global (iterators reference globalThis.req.headerList)
+  // Wrapped in a block to avoid const redeclaration conflicts with other evalCode blocks
+  if (headersEvalCode) {
+    vm.evalCode(`{ ${headersEvalCode} }`);
+  }
+};
+
+module.exports = addBrunoRequestShimToContext;

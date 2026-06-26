@@ -1,0 +1,590 @@
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('node:child_process');
+const isDev = require('electron-is-dev');
+const os = require('os');
+const { initializeShellEnv, waitForShellEnv } = require('./store/shell-env-state');
+const { percentageToZoomLevel } = require('@usebruno/common');
+
+if (isDev) {
+  if (!fs.existsSync(path.join(__dirname, '../../bruno-js/src/sandbox/bundle-browser-rollup.js'))) {
+    console.log('JS Sandbox libraries have not been bundled yet');
+    console.log('Please run the below command \nnpm run sandbox:bundle-libraries --workspace=packages/bruno-js');
+    throw new Error('JS Sandbox libraries have not been bundled yet');
+  }
+}
+
+const { format } = require('url');
+const { BrowserWindow, app, session, Menu, globalShortcut, ipcMain, nativeTheme } = require('electron');
+const { setContentSecurityPolicy } = require('electron-util');
+
+if (isDev && process.env.ELECTRON_USER_DATA_PATH) {
+  console.debug('`ELECTRON_USER_DATA_PATH` found, modifying `userData` path: \n'
+    + `\t${app.getPath('userData')} -> ${process.env.ELECTRON_USER_DATA_PATH}`);
+
+  app.setPath('userData', process.env.ELECTRON_USER_DATA_PATH);
+}
+
+// Command line switches
+if (os.platform() === 'linux') {
+  // Use portal version 4 that supports current_folder option
+  // to address https://github.com/usebruno/bruno/issues/5471
+  // Runtime sets the default version to 3, refs https://github.com/electron/electron/pull/44426
+  app.commandLine.appendSwitch('xdg-portal-required-version', '4');
+}
+
+const menuTemplate = require('./app/menu-template');
+const { openCollection } = require('./app/collections');
+const registerNetworkIpc = require('./ipc/network');
+const registerCollectionsIpc = require('./ipc/collection');
+const registerFilesystemIpc = require('./ipc/filesystem');
+const registerPreferencesIpc = require('./ipc/preferences');
+const registerSnapshotIpc = require('./ipc/snapshot');
+const registerSystemMonitorIpc = require('./ipc/system-monitor');
+const registerWorkspaceIpc = require('./ipc/workspace');
+const registerApiSpecIpc = require('./ipc/apiSpec');
+const registerGitIpc = require('./ipc/git');
+const registerOpenAPISyncIpc = require('./ipc/openapi-sync');
+const registerAiIpc = require('./ipc/ai');
+const registerAiAutocompleteIpc = require('./ipc/ai/autocomplete');
+const { registerMountIpc } = require('./ipc/mount');
+const collectionWatcher = require('./app/collection-watcher');
+const WorkspaceWatcher = require('./app/workspace-watcher');
+const ApiSpecWatcher = require('./app/apiSpecsWatcher');
+const { loadWindowState, saveBounds, saveMaximized } = require('./utils/window');
+const { preferencesUtil, getPreferences, savePreferences } = require('./store/preferences');
+const { globalEnvironmentsManager } = require('./store/workspace-environments');
+const registerNotificationsIpc = require('./ipc/notifications');
+const registerGlobalEnvironmentsIpc = require('./ipc/global-environments');
+const TerminalManager = require('./ipc/terminal');
+const { safeParseJSON, safeStringifyJSON } = require('./utils/common');
+const { getDomainsWithCookies } = require('./utils/cookies');
+const { cookiesStore } = require('./store/cookies');
+const SystemMonitor = require('./app/system-monitor');
+const { getIsRunningInRosetta } = require('./utils/arch');
+const { handleAppProtocolUrl, getAppProtocolUrlFromArgv } = require('./utils/deeplink');
+const { isQuarantined, promptAndRemoveQuarantine } = require('./utils/gatekeeper');
+const registerUpdaterIpc = require('./ipc/updater');
+
+const systemMonitor = new SystemMonitor();
+const terminalManager = new TerminalManager();
+
+const workspaceWatcher = new WorkspaceWatcher();
+const apiSpecWatcher = new ApiSpecWatcher();
+
+// Reference: https://content-security-policy.com/
+const contentSecurityPolicy = [
+  'default-src \'self\'',
+  'connect-src \'self\'',
+  'font-src \'self\' https: data:;',
+  'frame-src data:',
+  'script-src \'self\' data:',
+  // this has been commented out to make oauth2 work
+  // "form-action 'none'",
+  // we make an exception and allow http for images so that
+  // they can be used as link in the embedded markdown editors
+  'img-src \'self\' blob: data: http: https:',
+  'media-src \'self\' blob: data: https:',
+  'style-src \'self\' \'unsafe-inline\' https:'
+];
+
+setContentSecurityPolicy(contentSecurityPolicy.join(';') + ';');
+
+const menu = Menu.buildFromTemplate(menuTemplate);
+const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
+const isLinux = process.platform === 'linux';
+
+let mainWindow;
+let appProtocolUrl;
+
+// Helper function to save zoom percentage to preferences and notify renderer
+const saveZoomPreferences = async (percentage) => {
+  if (!mainWindow) return;
+
+  const clampedPercentage = Math.max(50, Math.min(150, percentage));
+
+  const prefs = getPreferences();
+  prefs.display = prefs.display || {};
+  prefs.display.zoomPercentage = clampedPercentage;
+
+  try {
+    await savePreferences(prefs);
+    // Notify renderer to update Redux state only after successful save
+    mainWindow.webContents.send('main:load-preferences', prefs);
+  } catch (err) {
+    console.error('Failed to save zoom preference:', err);
+  }
+};
+
+// Helper function to focus and restore the main window
+const focusMainWindow = () => {
+  if (mainWindow) {
+    app.focus({ steal: true });
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.focus();
+  }
+};
+
+const closeAllWatchers = () => Promise.allSettled([
+  collectionWatcher.closeAllWatchers(),
+  workspaceWatcher.closeAllWatchers(),
+  apiSpecWatcher.closeAllWatchers()
+]);
+
+// Parse protocol URL from command line arguments (if any)
+appProtocolUrl = getAppProtocolUrlFromArgv(process.argv);
+
+// Single instance lock - ensures only one instance of Pakpost runs at a time (enabled by default)
+const useSingleInstance = process.env.DISABLE_SINGLE_INSTANCE !== 'true';
+const gotTheLock = useSingleInstance ? app.requestSingleInstanceLock() : true;
+
+if (useSingleInstance && !gotTheLock) {
+  // Another instance is already running, quit immediately
+  app.quit();
+} else {
+  // This is the primary instance (or single instance is disabled)
+
+  // Try to remove any existing registrations
+  app.removeAsDefaultProtocolClient('pakpost');
+  // Register as default handler for `pakpost://` protocol URLs
+  app.setAsDefaultProtocolClient('pakpost');
+
+  if (isLinux) {
+    try {
+      execSync('xdg-mime default pakpost.desktop x-scheme-handler/pakpost');
+    } catch (err) {}
+  }
+
+  // Handle protocol URLs for MacOS
+  if (isMac) {
+    app.on('open-url', (event, url) => {
+      event.preventDefault();
+      if (url) {
+        if (mainWindow) {
+          focusMainWindow();
+          handleAppProtocolUrl(url);
+        } else {
+          // Store for handling after window is ready
+          appProtocolUrl = url;
+        }
+      }
+    });
+  }
+
+  // Handle second instance attempts - focus primary window on all platforms
+  app.on('second-instance', (event, commandLine) => {
+    focusMainWindow();
+    // Extract and handle protocol URL from the second instance attempt
+    const url = getAppProtocolUrlFromArgv(commandLine);
+    if (url) {
+      handleAppProtocolUrl(url);
+    }
+  });
+}
+
+// Prepare the renderer once the app is ready
+app.on('ready', async () => {
+  initializeShellEnv();
+
+  if (isDev) {
+    const { installExtension, REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
+    try {
+      const extensions = await installExtension([REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS], {
+        loadExtensionOptions: { allowFileAccess: true }
+      });
+      console.log(`Added Extensions:  ${extensions.map((ext) => ext.name).join(', ')}`);
+      await require('node:timers/promises').setTimeout(1000);
+      session.defaultSession.getAllExtensions().map((ext) => {
+        console.log(`Loading Extension: ${ext.name}`);
+        session.defaultSession.loadExtension(ext.path);
+      });
+    } catch (err) {
+      console.error('An error occurred while loading extensions: ', err);
+    }
+  }
+
+  // Initialize system proxy cache early (non-blocking)
+  const { fetchSystemProxy } = require('./store/system-proxy');
+
+  // Note: irrespective of the state of the shell,
+  // try to fetch the system proxy information
+  waitForShellEnv()
+    .catch((err) => {
+      console.warn('Shell env init failed:', err);
+    })
+    .finally(() => {
+      fetchSystemProxy().catch((err) => {
+        console.warn('Failed to initialize system proxy cache:', err);
+      });
+    });
+
+  Menu.setApplicationMenu(menu);
+  const { maximized, x, y, width, height } = loadWindowState();
+  const WindowStateStore = require('./store/window-state');
+  const windowStateStore = new WindowStateStore();
+  const themeBg = windowStateStore.getThemeBg();
+
+  mainWindow = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    minWidth: 700,
+    minHeight: 400,
+    show: false,
+    backgroundColor: themeBg,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webviewTag: true
+    },
+    title: 'Pakpost',
+    icon: path.join(__dirname, 'about/256x256.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : isWindows ? 'hidden' : undefined,
+    frame: isLinux ? false : true,
+    trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined
+    // we will bring this back
+    // see https://github.com/usebruno/bruno/issues/440
+    // autoHideMenuBar: true
+  });
+
+  if (maximized) {
+    mainWindow.maximize();
+  }
+
+  ipcMain.on('renderer:window-minimize', () => {
+    if (!isWindows && !isLinux) return;
+    mainWindow.minimize();
+  });
+
+  ipcMain.on('renderer:window-maximize', () => {
+    if (!isWindows && !isLinux) return;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on('renderer:window-close', () => {
+    if (!isWindows && !isLinux) return;
+    mainWindow.close();
+  });
+
+  ipcMain.handle('renderer:window-is-maximized', () => {
+    if (!isWindows && !isLinux) return false;
+    return mainWindow.isMaximized();
+  });
+
+  ipcMain.handle('renderer:window-is-fullscreen', () => {
+    return mainWindow.isFullScreen();
+  });
+
+  ipcMain.handle('renderer:open-preferences', () => {
+    ipcMain.emit('main:open-preferences');
+  });
+
+  ipcMain.handle('renderer:toggle-devtools', () => {
+    mainWindow.webContents.toggleDevTools();
+  });
+
+  ipcMain.handle('renderer:reset-zoom', () => {
+    updateZoomLevel(100);
+  });
+
+  ipcMain.handle('renderer:zoom-in', () => {
+    incrementZoomAndPersist(10);
+  });
+
+  ipcMain.handle('renderer:zoom-out', () => {
+    incrementZoomAndPersist(-10);
+  });
+
+  // Menu event handlers for zoom (from menu-template.js)
+  ipcMain.on('menu:reset-zoom', () => {
+    updateZoomLevel(100);
+  });
+
+  ipcMain.on('menu:zoom-in', () => {
+    incrementZoomAndPersist(10);
+  });
+
+  ipcMain.on('menu:zoom-out', () => {
+    incrementZoomAndPersist(-10);
+  });
+
+  ipcMain.handle('renderer:set-zoom-level', (event, zoomLevel) => {
+    mainWindow.webContents.setZoomLevel(zoomLevel);
+  });
+
+  ipcMain.handle('renderer:toggle-fullscreen', () => {
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  });
+
+  ipcMain.handle('renderer:open-docs', () => {
+    ipcMain.emit('main:open-docs');
+  });
+
+  ipcMain.handle('renderer:open-about', () => {
+    const { version } = require('../package.json');
+    const aboutBruno = require('./app/about-bruno');
+    const aboutWindow = new BrowserWindow({
+      width: 350,
+      height: 250,
+      webPreferences: {
+        nodeIntegration: true
+      }
+    });
+    aboutWindow.removeMenu();
+    aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(aboutBruno({ version }))}`);
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    // Apply saved zoom level from preferences before showing window
+    const zoomPercentage = preferencesUtil.getZoomPercentage();
+    if (zoomPercentage) {
+      const zoomLevel = percentageToZoomLevel(zoomPercentage);
+      mainWindow.webContents.setZoomLevel(zoomLevel);
+    }
+    mainWindow.show();
+  });
+  const devPort = process.env.BRUNO_DEV_PORT || 3000;
+  const url = isDev
+    ? `http://localhost:${devPort}`
+    : format({
+        pathname: path.join(__dirname, '../web/index.html'),
+        protocol: 'file:',
+        slashes: true
+      });
+
+  mainWindow.loadURL(url).catch((reason) => {
+    console.error(`Error: Failed to load URL: "${url}" (Electron shows a blank screen because of this).`);
+    console.error('Original message:', reason);
+    if (isDev) {
+      console.error(
+        'Could not connect to Next.Js dev server, is it running?'
+        + ' Start the dev server using "npm run dev:web" and restart electron'
+      );
+    } else {
+      console.error(
+        'If you are using an official production build: the above error is most likely a bug! '
+        + ' Please report this under: https://github.com/usebruno/bruno/issues'
+      );
+    }
+  });
+
+  // Di macOS, cek apakah app terkena Gatekeeper quarantine.
+  // Kalau iya, tawarkan user untuk hapus xattr supaya tidak muncul "damaged".
+  if (isMac && !isDev) {
+    try {
+      if (isQuarantined()) {
+        promptAndRemoveQuarantine(mainWindow).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[gatekeeper] failed to check quarantine:', err.message);
+    }
+  }
+
+  let boundsTimeout;
+  const handleBoundsChange = () => {
+    if (!mainWindow.isMaximized()) {
+      if (boundsTimeout) {
+        clearTimeout(boundsTimeout);
+      }
+      boundsTimeout = setTimeout(() => {
+        saveBounds(mainWindow);
+      }, 100);
+    }
+  };
+
+  mainWindow.on('resize', handleBoundsChange);
+  mainWindow.on('move', handleBoundsChange);
+
+  mainWindow.on('maximize', () => {
+    saveMaximized(true);
+    mainWindow.webContents.send('main:window-maximized');
+  });
+  mainWindow.on('unmaximize', () => {
+    saveMaximized(false);
+    mainWindow.webContents.send('main:window-unmaximized');
+  });
+
+  // Full screen events for title bar padding adjustment
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send('main:enter-full-screen');
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send('main:leave-full-screen');
+  });
+
+  mainWindow.on('close', (e) => {
+    e.preventDefault();
+    terminalManager.cleanup(mainWindow.webContents);
+    ipcMain.emit('main:start-quit-flow');
+  });
+
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    event.preventDefault();
+    if (/^(http:\/\/|https:\/\/)/.test(url)) {
+      require('electron').shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (appProtocolUrl) {
+      handleAppProtocolUrl(appProtocolUrl);
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const { protocol } = new URL(url);
+      if (['https:', 'http:'].includes(protocol)) {
+        require('electron').shell.openExternal(url);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('did-finish-load', async () => {
+    try {
+      let ogSend = mainWindow.webContents.send;
+      mainWindow.webContents.send = function (channel, ...args) {
+        return ogSend.apply(this, [channel, ...args.map((_) => {
+          // todo: replace this with @msgpack/msgpack encode/decode
+          return safeParseJSON(safeStringifyJSON(_));
+        })]);
+      };
+    } catch (err) {
+      console.error('Error wrapping webContents.send:', err);
+    }
+
+    // Send cookies list after renderer is ready
+    try {
+      cookiesStore.initializeCookies();
+      const cookiesList = await getDomainsWithCookies();
+      mainWindow.webContents.send('main:cookies-update', cookiesList);
+    } catch (err) {
+      console.error('Failed to load cookies for renderer', err);
+    }
+
+    mainWindow.webContents.send('main:app-loaded', {
+      isRunningInRosetta: getIsRunningInRosetta()
+    });
+  });
+
+  // register all ipc handlers
+  registerNetworkIpc(mainWindow);
+  registerGlobalEnvironmentsIpc(mainWindow, globalEnvironmentsManager);
+  registerCollectionsIpc(mainWindow, collectionWatcher);
+  registerPreferencesIpc(mainWindow, collectionWatcher);
+  registerSnapshotIpc();
+  registerWorkspaceIpc(mainWindow, workspaceWatcher);
+  registerApiSpecIpc(mainWindow, apiSpecWatcher);
+  registerNotificationsIpc(mainWindow, collectionWatcher);
+  registerFilesystemIpc(mainWindow);
+  registerSystemMonitorIpc(mainWindow, systemMonitor);
+  registerGitIpc(mainWindow);
+  registerOpenAPISyncIpc(mainWindow);
+  registerAiIpc(mainWindow);
+  registerAiAutocompleteIpc(mainWindow);
+  registerMountIpc();
+  registerUpdaterIpc(mainWindow);
+
+  // Internal delegator
+  ipcMain.handle('main:cache-clear', async () => {
+    ipcMain.emit('internal:snapshot:reset');
+  });
+});
+
+// Quit the app once all windows are closed.
+//
+// We defer the actual exit until async cleanup (chokidar fsevents handles)
+// finishes, otherwise the main process exits while native watcher cleanup
+// is mid-flight, and Chromium helper processes can detect the broken IPC
+// channel and abort(), producing the macOS "quit unexpectedly" dialog.
+let quitInProgress = false;
+app.on('before-quit', (event) => {
+  if (quitInProgress) return;
+  quitInProgress = true;
+  event.preventDefault();
+
+  (async () => {
+    try {
+      await Promise.race([
+        closeAllWatchers(),
+        // Cap the wait so a stuck watcher can't block exit indefinitely.
+        new Promise((resolve) => setTimeout(resolve, 2000))
+      ]);
+    } catch {}
+
+    try { await require('./ipc/mount').shutdown(); } catch {}
+
+    if (useSingleInstance && gotTheLock) {
+      try { app.releaseSingleInstanceLock(); } catch {}
+    }
+
+    try {
+      cookiesStore.saveCookieJar(true);
+    } catch (err) {
+      console.warn('Failed to flush cookies on quit', err);
+    }
+
+    systemMonitor.stop();
+
+    try {
+      terminalManager.killAll();
+    } catch (err) {
+      console.error('Failed to kill all terminals on quit', err);
+    }
+
+    app.exit(0);
+  })();
+});
+
+app.on('window-all-closed', app.quit);
+
+// Open collection from Recent menu (#1521)
+app.on('open-file', (event, path) => {
+  openCollection(mainWindow, collectionWatcher, path);
+});
+
+// Register the global shortcuts
+app.on('browser-window-focus', () => {
+  // Quick fix for Electron issue #29996: https://github.com/electron/electron/issues/29996
+  globalShortcut.register('Ctrl+=', () => {
+    incrementZoomAndPersist(10);
+  });
+});
+
+// Disable global shortcuts when not focused
+app.on('browser-window-blur', () => {
+  globalShortcut.unregisterAll();
+});
+
+/**
+ * @param {number} inc (+/- amount to zoom in / out);
+ */
+function incrementZoomAndPersist(inc) {
+  const currentPercentage = preferencesUtil.getZoomPercentage();
+  const nextPercentage = Math.min(
+    Math.max(currentPercentage + inc, 50),
+    150
+  );
+  updateZoomLevel(nextPercentage);
+}
+
+/**
+ * @param {number} percent percentage to increase or decrease zoom by, percentage is converted to chrome's log value internally
+ */
+function updateZoomLevel(percent) {
+  const zoomLevel = percentageToZoomLevel(percent);
+  mainWindow.webContents.setZoomLevel(zoomLevel);
+  saveZoomPreferences(percent);
+}

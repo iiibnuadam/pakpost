@@ -1,0 +1,212 @@
+import React, { useMemo } from 'react';
+import get from 'lodash/get';
+import StyledWrapper from './StyledWrapper';
+import { saveFolderRoot } from 'providers/ReduxStore/slices/collections/actions';
+import OAuth2AuthorizationCode from 'components/RequestPane/Auth/OAuth2/AuthorizationCode/index';
+import { updateFolderAuth as _updateFolderAuth } from 'providers/ReduxStore/slices/collections';
+import { useDispatch } from 'react-redux';
+import OAuth2PasswordCredentials from 'components/RequestPane/Auth/OAuth2/PasswordCredentials/index';
+import OAuth2ClientCredentials from 'components/RequestPane/Auth/OAuth2/ClientCredentials/index';
+import OAuth2Implicit from 'components/RequestPane/Auth/OAuth2/Implicit/index';
+import GrantTypeSelector from 'components/RequestPane/Auth/OAuth2/GrantTypeSelector/index';
+import AuthMode from '../AuthMode';
+import BasicAuth from 'components/RequestPane/Auth/BasicAuth';
+import BearerAuth from 'components/RequestPane/Auth/BearerAuth';
+import DigestAuth from 'components/RequestPane/Auth/DigestAuth';
+import NTLMAuth from 'components/RequestPane/Auth/NTLMAuth';
+import OAuth1 from 'components/RequestPane/Auth/OAuth1';
+import WsseAuth from 'components/RequestPane/Auth/WsseAuth';
+import ApiKeyAuth from 'components/RequestPane/Auth/ApiKeyAuth';
+import AwsV4Auth from 'components/RequestPane/Auth/AwsV4Auth';
+import { humanizeRequestAuthMode } from 'utils/collections/index';
+import Button from 'ui/Button';
+import { getEffectiveAuthSource } from 'utils/auth';
+
+const GrantTypeComponentMap = ({ collection, folder, updateFolderAuth }) => {
+  const dispatch = useDispatch();
+
+  const save = () => {
+    dispatch(saveFolderRoot(collection.uid, folder.uid));
+  };
+
+  const folderRoot = folder?.draft || folder?.root;
+  let request = get(folderRoot, 'request', {});
+  const grantType = get(request, 'auth.oauth2.grantType', 'authorization_code');
+
+  switch (grantType) {
+    case 'password':
+      return <OAuth2PasswordCredentials save={save} item={folder} request={request} updateAuth={updateFolderAuth} collection={collection} folder={folder} />;
+    case 'authorization_code':
+      return <OAuth2AuthorizationCode save={save} item={folder} request={request} updateAuth={updateFolderAuth} collection={collection} folder={folder} />;
+    case 'client_credentials':
+      return <OAuth2ClientCredentials save={save} item={folder} request={request} updateAuth={updateFolderAuth} collection={collection} folder={folder} />;
+    case 'implicit':
+      return <OAuth2Implicit save={save} item={folder} request={request} updateAuth={updateFolderAuth} collection={collection} folder={folder} />;
+    default:
+      return <div>TBD</div>;
+  }
+};
+
+const Auth = ({ collection, folder }) => {
+  const dispatch = useDispatch();
+  const folderRoot = folder?.draft || folder?.root;
+  let request = get(folderRoot, 'request', {});
+  const authMode = get(folderRoot, 'request.auth.mode');
+
+  const handleSave = () => {
+    dispatch(saveFolderRoot(collection.uid, folder.uid));
+  };
+
+  const updateFolderAuth = ({ itemUid, ...rest }) => {
+    return _updateFolderAuth({
+      ...rest,
+      folderUid: folder.uid
+    });
+  };
+
+  const inheritedSource = useMemo(
+    () => (authMode === 'inherit' ? getEffectiveAuthSource(collection, folder) : null),
+    [authMode, folder, collection]
+  );
+
+  const getAuthView = () => {
+    switch (authMode) {
+      case 'basic': {
+        return (
+          <BasicAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'bearer': {
+        return (
+          <BearerAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'digest': {
+        return (
+          <DigestAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'ntlm': {
+        return (
+          <NTLMAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'oauth1': {
+        return (
+          <OAuth1
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'wsse': {
+        return (
+          <WsseAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'apikey': {
+        return (
+          <ApiKeyAuth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'awsv4': {
+        return (
+          <AwsV4Auth
+            collection={collection}
+            item={folder}
+            updateAuth={updateFolderAuth}
+            request={request}
+            save={() => handleSave()}
+          />
+        );
+      }
+      case 'oauth2': {
+        return (
+          <>
+            <GrantTypeSelector
+              request={request}
+              updateAuth={updateFolderAuth}
+              collection={collection}
+              item={folder}
+            />
+            <GrantTypeComponentMap collection={collection} folder={folder} updateFolderAuth={updateFolderAuth} />
+          </>
+        );
+      }
+      case 'inherit': {
+        return (
+          <>
+            <div className="flex flex-row w-full mt-2 gap-2">
+              <div>Auth inherited from {inheritedSource.name}: </div>
+              <div className="inherit-mode-text" data-testid="inherited-auth-mode">{humanizeRequestAuthMode(inheritedSource.auth?.mode)}</div>
+            </div>
+          </>
+        );
+      }
+      case 'none': {
+        return null;
+      }
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <StyledWrapper className="w-full">
+      <div className="text-xs mb-4 text-muted">
+        Configures authentication for the entire folder. This applies to all requests using the{' '}
+        <span className="font-medium">Inherit</span> option in the <span className="font-medium">Auth</span> tab.
+      </div>
+      <div className="flex flex-grow justify-start items-center">
+        <AuthMode collection={collection} folder={folder} />
+      </div>
+      {getAuthView()}
+      <div className="mt-6">
+        <Button type="submit" size="sm" onClick={handleSave}>
+          Save
+        </Button>
+      </div>
+    </StyledWrapper>
+  );
+};
+
+export default Auth;
