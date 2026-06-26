@@ -2,7 +2,10 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { BrowserWindow } = require('electron');
 const { version } = require('../../package.json');
-const aboutBruno = require('./about-bruno');
+const about = require('./about');
+const { getWhiteLabel } = require('../../white-label.config');
+
+const whiteLabel = getWhiteLabel();
 
 const template = [
   {
@@ -96,7 +99,7 @@ const template = [
     role: 'help',
     submenu: [
       {
-        label: 'About Bruno',
+        label: `About ${whiteLabel.productName}`,
         click: () => {
           const aboutWindow = new BrowserWindow({
             width: 350,
@@ -106,7 +109,12 @@ const template = [
             }
           });
           aboutWindow.removeMenu();
-          aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(aboutBruno({ version }))}`);
+          aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(about({
+            version,
+            productName: whiteLabel.productName,
+            copyrightOwner: whiteLabel.copyrightOwner,
+            description: whiteLabel.description
+          }))}`);
         }
       },
       { label: 'Documentation', click: () => ipcMain.emit('main:open-docs') }

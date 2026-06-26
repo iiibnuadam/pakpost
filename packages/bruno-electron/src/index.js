@@ -63,6 +63,9 @@ const { cookiesStore } = require('./store/cookies');
 const SystemMonitor = require('./app/system-monitor');
 const { getIsRunningInRosetta } = require('./utils/arch');
 const { handleAppProtocolUrl, getAppProtocolUrlFromArgv } = require('./utils/deeplink');
+const { getWhiteLabel } = require('../white-label.config');
+
+const whiteLabel = getWhiteLabel();
 
 const systemMonitor = new SystemMonitor();
 const terminalManager = new TerminalManager();
@@ -135,7 +138,7 @@ const closeAllWatchers = () => Promise.allSettled([
 // Parse protocol URL from command line arguments (if any)
 appProtocolUrl = getAppProtocolUrlFromArgv(process.argv);
 
-// Single instance lock - ensures only one instance of PAKPOS runs at a time (enabled by default)
+// Single instance lock - ensures only one instance of the app runs at a time (enabled by default)
 const useSingleInstance = process.env.DISABLE_SINGLE_INSTANCE !== 'true';
 const gotTheLock = useSingleInstance ? app.requestSingleInstanceLock() : true;
 
@@ -146,13 +149,13 @@ if (useSingleInstance && !gotTheLock) {
   // This is the primary instance (or single instance is disabled)
 
   // Try to remove any existing registrations
-  app.removeAsDefaultProtocolClient('bruno');
-  // Register as default handler for `bruno://` protocol URLs
-  app.setAsDefaultProtocolClient('bruno');
+  app.removeAsDefaultProtocolClient(whiteLabel.protocol);
+  // Register as default handler for custom protocol URLs
+  app.setAsDefaultProtocolClient(whiteLabel.protocol);
 
   if (isLinux) {
     try {
-      execSync('xdg-mime default bruno.desktop x-scheme-handler/bruno');
+      execSync(`xdg-mime default ${whiteLabel.protocol}.desktop x-scheme-handler/${whiteLabel.protocol}`);
     } catch (err) {}
   }
 
@@ -240,8 +243,8 @@ app.on('ready', async () => {
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true
     },
-    title: 'PAKPOS',
-    icon: path.join(__dirname, 'about/256x256.png'),
+    title: whiteLabel.productName,
+    icon: whiteLabel.aboutIcon,
     titleBarStyle: isMac ? 'hiddenInset' : isWindows ? 'hidden' : undefined,
     frame: isLinux ? false : true,
     trafficLightPosition: isMac ? { x: 12, y: 10 } : undefined
@@ -329,7 +332,7 @@ app.on('ready', async () => {
 
   ipcMain.handle('renderer:open-about', () => {
     const { version } = require('../package.json');
-    const aboutBruno = require('./app/about-bruno');
+    const about = require('./app/about');
     const aboutWindow = new BrowserWindow({
       width: 350,
       height: 250,
@@ -338,7 +341,12 @@ app.on('ready', async () => {
       }
     });
     aboutWindow.removeMenu();
-    aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(aboutBruno({ version }))}`);
+    aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(about({
+      version,
+      productName: whiteLabel.productName,
+      copyrightOwner: whiteLabel.copyrightOwner,
+      description: whiteLabel.description
+    }))}`);
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -370,7 +378,7 @@ app.on('ready', async () => {
     } else {
       console.error(
         'If you are using an official production build: the above error is most likely a bug! '
-        + ' Please report this under: https://github.com/usebruno/bruno/issues'
+        + ` Please report this under: ${whiteLabel.githubUrl}`
       );
     }
   });

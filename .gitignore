@@ -72,3 +72,6 @@ packages/bruno-filestore/dist
 packages/bruno-requests/dist
 packages/bruno-schema-types/dist
 packages/bruno-converters/dist
+
+# Generated white-label runtime config
+packages/bruno-electron/resources/white-label.json

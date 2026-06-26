@@ -1,12 +1,14 @@
-module.exports = function aboutBruno({ version }) {
+module.exports = function about({ version, productName, copyrightOwner, description }) {
   const currentYear = new Date().getFullYear();
+  const tagline = description || `Based on Bruno — rebranded for ${productName}`;
+
   return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes">
-        <title>About PAKPOS</title>
+        <title>About ${productName}</title>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -167,10 +169,10 @@ module.exports = function aboutBruno({ version }) {
             />
           </g>
         </svg>
-      <h2 class="title">PAKPOS ${version}</h2>
-      <div class="description">Based on Bruno — rebranded for PAKPOS</div>
+      <h2 class="title">${productName} ${version}</h2>
+      <div class="description">${tagline}</div>
       <footer class="footer">
-          ©${currentYear} PAKPOS
+          ©${currentYear} ${copyrightOwner}
       </footer>
     </body>
     </html>
