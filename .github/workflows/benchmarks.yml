@@ -6,8 +6,10 @@ on:
         description: 'Update baseline with current results instead of comparing'
         type: boolean
         default: false
-  pull_request:
-    branches: [main, 'release/v*']
+  # Nonaktifkan sementara untuk fokus ke release workflow.
+  # Trigger asli:
+  # pull_request:
+  #   branches: [main, 'release/v*']
 
 jobs:
   benchmark:

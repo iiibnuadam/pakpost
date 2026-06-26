@@ -1,10 +1,13 @@
 name: Flaky Test Detector
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'tests/**/*.spec.ts'
+  workflow_dispatch:
+  # Nonaktifkan sementara untuk fokus ke release workflow.
+  # Trigger asli:
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - 'tests/**/*.spec.ts'
 
 permissions:
   contents: read

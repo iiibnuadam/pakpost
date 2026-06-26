@@ -1,10 +1,12 @@
 name: Lint Checks
 on:
   workflow_dispatch:
-  push:
-    branches: [main, 'release/v*']
-  pull_request:
-    branches: [main, 'release/v*']
+  # Nonaktifkan sementara untuk fokus ke release workflow.
+  # Trigger asli:
+  # push:
+  #   branches: [main, 'release/v*']
+  # pull_request:
+  #   branches: [main, 'release/v*']
 
 jobs:
   lint:

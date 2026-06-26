@@ -30,6 +30,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build workspace packages
+        run: |
+          npm run build:graphql-docs
+          npm run build:bruno-query
+          npm run build:bruno-common
+          npm run build:bruno-converters
+          npm run build:bruno-requests
+          npm run build:schema-types
+          npm run build:bruno-filestore
+          npm run sandbox:bundle-libraries --workspace=packages/bruno-js
+
       - name: Build renderer
         run: npm run build:web
 
