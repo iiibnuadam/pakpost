@@ -27,7 +27,7 @@ export default defineConfig({
     ]
   },
   html: {
-    title: 'PAKPOS'
+    title: 'Pakpost'
   },
   tools: {
     rspack: {

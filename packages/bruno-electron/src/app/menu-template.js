@@ -2,10 +2,10 @@ const { ipcMain } = require('electron');
 const os = require('os');
 const { BrowserWindow } = require('electron');
 const { version } = require('../../package.json');
-const about = require('./about');
-const { getWhiteLabel } = require('../../white-label.config');
+const aboutBruno = require('./about-bruno');
+const { removeQuarantine } = require('../utils/gatekeeper');
 
-const whiteLabel = getWhiteLabel();
+const isMac = process.platform === 'darwin';
 
 const template = [
   {
@@ -99,7 +99,7 @@ const template = [
     role: 'help',
     submenu: [
       {
-        label: `About ${whiteLabel.productName}`,
+        label: 'About Pakpost',
         click: () => {
           const aboutWindow = new BrowserWindow({
             width: 350,
@@ -109,12 +109,15 @@ const template = [
             }
           });
           aboutWindow.removeMenu();
-          aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(about({
-            version,
-            productName: whiteLabel.productName,
-            copyrightOwner: whiteLabel.copyrightOwner,
-            description: whiteLabel.description
-          }))}`);
+          aboutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(aboutBruno({ version }))}`);
+        }
+      },
+      { type: 'separator', visible: isMac },
+      {
+        label: 'Remove Gatekeeper Quarantine',
+        visible: isMac,
+        click: () => {
+          removeQuarantine(BrowserWindow.getFocusedWindow());
         }
       },
       { label: 'Documentation', click: () => ipcMain.emit('main:open-docs') }

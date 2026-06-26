@@ -2,15 +2,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { app } = require('electron');
 
-const PAKPOS_DIR_NAME = 'pakpos';
+const PAKPOST_DIR_NAME = 'pakpost';
 
 /**
  * Returns the default location where new workspaces and collections are stored.
- * Checks ~/Documents/pakpos if available, otherwise falls back to the app's data directory
+ * Checks ~/Documents/pakpost if available, otherwise falls back to the app's data directory
  */
 function resolveDefaultLocation() {
   const defaultPaths = [
-    path.join(app.getPath('documents'), PAKPOS_DIR_NAME),
+    path.join(app.getPath('documents'), PAKPOST_DIR_NAME),
     app.getPath('userData')
   ];
 

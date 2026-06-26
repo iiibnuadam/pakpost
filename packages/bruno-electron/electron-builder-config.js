@@ -1,22 +1,21 @@
-const { getWhiteLabel, writeRuntimeConfig } = require('./white-label.config');
+require('dotenv').config({ path: process.env.DOTENV_PATH });
 
-// Resolve branding from env vars and persist it so the packaged app uses the
-// same values at runtime even when the build env vars are not present.
-const wl = getWhiteLabel();
-writeRuntimeConfig(wl);
-
-// macOS signing & notarization
-// Apple wajibkan app yang di-download dari internet harus signed + notarized
-// supaya Gatekeeper tidak menampilkan "damaged" atau meminta xattr.
-// Build lokal tetap unsigned jika env var ini tidak diset.
+// macOS signing & notarization — hanya aktif kalau credential Apple diset.
 const appleIdentity = process.env.APPLE_IDENTITY;
-const hasAppleCredentials = Boolean(process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD);
-const shouldSignAndNotarize = Boolean(appleIdentity && hasAppleCredentials);
+const shouldSignAndNotarize = Boolean(
+  appleIdentity && process.env.APPLE_ID && process.env.APPLE_ID_PASSWORD
+);
+
+// Auto-update feed — baca dari env saat build.
+const updateProvider = process.env.UPDATE_PROVIDER;
+const updateOwner = process.env.UPDATE_OWNER;
+const updateRepo = process.env.UPDATE_REPO;
+const updateChannel = process.env.UPDATE_CHANNEL || 'latest';
+const updateUrl = process.env.UPDATE_URL;
 
 const config = {
-  appId: wl.appId,
-  productName: wl.productName,
-  copyright: `Copyright © ${new Date().getFullYear()} ${wl.copyrightOwner}`,
+  appId: 'com.pakpost.app',
+  productName: 'Pakpost',
   electronVersion: '37.6.1',
   directories: {
     buildResources: 'resources',
@@ -42,7 +41,7 @@ const config = {
         arch: ['x64', 'arm64']
       }
     ],
-    icon: wl.iconMac,
+    icon: 'resources/icons/mac/icon.icns',
     hardenedRuntime: shouldSignAndNotarize,
     identity: appleIdentity || null,
     entitlements: 'resources/entitlements.mac.plist',
@@ -51,16 +50,16 @@ const config = {
     gatekeeperAssess: shouldSignAndNotarize,
     protocols: [
       {
-        name: wl.productName,
+        name: 'Pakpost',
         schemes: [
-          wl.protocol
+          'pakpost'
         ]
       }
     ]
   },
   linux: {
     artifactName: '${productName}_${version}_${arch}_${os}.${ext}',
-    icon: wl.iconLinux,
+    icon: 'resources/icons/png',
     target: [
       {
         target: 'AppImage',
@@ -77,13 +76,13 @@ const config = {
     ],
     protocols: [
       {
-        name: wl.productName,
-        schemes: [wl.protocol]
+        name: 'Pakpost',
+        schemes: ['pakpost']
       }
     ],
     category: 'Development',
     desktop: {
-      MimeType: `x-scheme-handler/${wl.protocol};`
+      MimeType: 'x-scheme-handler/pakpost;'
     }
   },
   deb: {
@@ -103,7 +102,7 @@ const config = {
   },
   win: {
     artifactName: '${productName}_${version}_${arch}_win.${ext}',
-    icon: wl.iconWin,
+    icon: 'resources/icons/win/icon.ico',
     target: [
       {
         target: 'nsis',
@@ -111,7 +110,7 @@ const config = {
       }
     ],
     sign: null,
-    publisherName: wl.publisherName
+    publisherName: 'Pakpost'
   },
   nsis: {
     include: 'resources/installer.nsh',
@@ -125,6 +124,22 @@ const config = {
 
 if (shouldSignAndNotarize) {
   config.afterSign = 'notarize.js';
+}
+
+if (updateProvider) {
+  const publishConfig = {
+    provider: updateProvider,
+    channel: updateChannel
+  };
+
+  if (updateProvider === 'github') {
+    publishConfig.owner = updateOwner;
+    publishConfig.repo = updateRepo;
+  } else if (updateProvider === 'generic') {
+    publishConfig.url = updateUrl;
+  }
+
+  config.publish = publishConfig;
 }
 
 module.exports = config;

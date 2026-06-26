@@ -8,6 +8,7 @@ import StyledWrapper from './StyledWrapper';
 import useOpenAPISyncPolling from './useOpenAPISyncPolling';
 import GitCredentialsModal from 'components/Git/GitCredentialsModal';
 import useChangelogOnUpdate from './useChangelogOnUpdate';
+import useAutoUpdater from './useAutoUpdater';
 import { version } from '../../../package.json';
 
 export const AppContext = React.createContext();
@@ -16,6 +17,7 @@ export const AppProvider = (props) => {
   useIpcEvents();
   useOpenAPISyncPolling();
   useChangelogOnUpdate();
+  useAutoUpdater();
   const dispatch = useDispatch();
 
   useEffect(() => {

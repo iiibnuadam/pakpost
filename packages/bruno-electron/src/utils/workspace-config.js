@@ -16,21 +16,21 @@ const GITIGNORE_MANAGED_BLOCK_END = '# End Bruno managed collection remotes';
 const getWorkspaceReadmeContent = (workspaceName = 'My Workspace') => `\
 # ${workspaceName}
 
-This is a PAKPOS workspace directory.
+This is a Pakpost workspace directory.
 
 ## Structure
 
 - \`collections/\` — contains your API request collections (one folder per collection).
 - \`environments/\` — contains environment variables used across collections.
-- \`workspace.yml\` — workspace metadata managed by PAKPOS. Do not edit manually.
+- \`workspace.yml\` — workspace metadata managed by Pakpost. Do not edit manually.
 
 ## Git behavior
 
 This workspace is designed to work with Git:
 
-- **Auto commit on save**: every time you save a request, collection, or environment, PAKPOS can automatically stage and commit the change.
-- **Auto push**: after a successful commit, PAKPOS can push to the configured remote.
-- **Auto pull**: PAKPOS can periodically pull from the remote to keep you in sync.
+- **Auto commit on save**: every time you save a request, collection, or environment, Pakpost can automatically stage and commit the change.
+- **Auto push**: after a successful commit, Pakpost can push to the configured remote.
+- **Auto pull**: Pakpost can periodically pull from the remote to keep you in sync.
 - **Conflicts**: if a pull or merge produces conflicts, conflicted files appear in Git → Changes → Conflicted. You can resolve each file by choosing **Ours** (your local version) or **Theirs** (the remote version), or abort the merge with **Abort merge**.
 
 You can enable/disable these behaviors from the Git panel inside the app.

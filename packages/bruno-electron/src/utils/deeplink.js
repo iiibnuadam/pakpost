@@ -1,17 +1,13 @@
 const { handleOauth2ProtocolUrl } = require('./oauth2-protocol-handler');
-const { getWhiteLabel } = require('../../white-label.config');
-
-const whiteLabel = getWhiteLabel();
-const protocolPrefix = `${whiteLabel.protocol}://`;
 
 // Store appProtocolUrl - will be handled in the `did-finish-load` event handler
 const getAppProtocolUrlFromArgv = (argv) => {
-  return argv.find((arg) => arg.startsWith(protocolPrefix));
+  return argv.find((arg) => arg.startsWith('pakpost://'));
 };
 
 // Handle app protocol URLs
 const handleAppProtocolUrl = (url) => {
-  // Handle OAuth2 callback URLs - `<protocol>://app/oauth2/callback`
+  // Handle OAuth2 callback URLs - `pakpost://app/oauth2/callback`
   if (isOauth2Url(url)) {
     handleOauth2ProtocolUrl(url);
   }

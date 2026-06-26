@@ -78,7 +78,7 @@ const Wrapper = styled.div`
     }
   }
 
-  /* Center section - PAKPOS branding */
+  /* Center section - Pakpost branding */
   .titlebar-center {
     position: absolute;
     left: 50%;
@@ -88,7 +88,7 @@ const Wrapper = styled.div`
     gap: 6px;
     pointer-events: none;
 
-    .pakpos-logo {
+    .pakpost-logo {
       object-fit: contain;
       border-radius: 3px;
     }

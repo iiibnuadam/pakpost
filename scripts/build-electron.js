@@ -123,7 +123,8 @@ async function main() {
       osArg = 'linux';
     }
 
-    await execCommandWithOutput(`npm run dist:${osArg} --workspace=packages/bruno-electron`);
+    const publishFlag = process.env.PUBLISH === 'always' ? ' -- --publish always' : '';
+    await execCommandWithOutput(`npm run dist:${osArg} --workspace=packages/bruno-electron${publishFlag}`);
   } catch (error) {
     console.error('An error occurred:', error);
   }

@@ -333,10 +333,10 @@ const AppTitleBar = () => {
           </MenuDropdown>
         </div>
 
-        {/* Center section: PAKPOS logo + text */}
+        {/* Center section: Pakpost logo + text */}
         <div className="titlebar-center">
-          <img src="assets/pakpos/logo.png" alt="PAKPOS" width={18} height={18} className="pakpos-logo" />
-          <span className="bruno-text">PAKPOS</span>
+          <img src="assets/pakpost/logo.png" alt="Pakpost" width={18} height={18} className="pakpost-logo" />
+          <span className="bruno-text">Pakpost</span>
         </div>
 
         {/* Right section: Action buttons */}

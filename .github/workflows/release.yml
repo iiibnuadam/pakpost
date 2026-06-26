@@ -1,0 +1,46 @@
+name: Release Electron App
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:web
+
+      - name: Build & publish Electron app
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PUBLISH: always
+          UPDATE_PROVIDER: github
+          UPDATE_OWNER: iiibnuadam
+          UPDATE_REPO: pakpost
+          UPDATE_CHANNEL: latest
+          # Uncomment & isi kalau sudah punya sertifikat Apple untuk macOS signing + notarisasi.
+          # APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run build:electron
