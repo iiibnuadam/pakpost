@@ -113,7 +113,7 @@
     "babel-jest": "^29.7.0",
     "babel-plugin-react-compiler": "19.0.0-beta-a7bf2bd-20241110",
     "babel-plugin-styled-components": "^2.1.4",
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "css-loader": "7.1.2",
     "file-loader": "^6.2.0",
     "html-loader": "^3.0.1",
