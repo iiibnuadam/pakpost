@@ -139,6 +139,8 @@ if (updateProvider && shouldPublish) {
   if (updateProvider === 'github') {
     publishConfig.owner = updateOwner;
     publishConfig.repo = updateRepo;
+    // Ensure the GitHub release is published, not saved as a draft.
+    publishConfig.releaseType = 'release';
   } else if (updateProvider === 'generic') {
     publishConfig.url = updateUrl;
   }
