@@ -48,6 +48,87 @@
       </div>
     </section>
 
+    <section class="install-guide" id="install-guide">
+      <h2>Panduan Instalasi</h2>
+      <p class="install-intro">
+        Pakpost belum memiliki code signing resmi dari Apple atau Microsoft.
+        Ikuti petunjuk di bawah supaya instalasi berjalan lancar.
+      </p>
+
+      <div class="tabs">
+        <button class="tab-button active" data-tab="macos">macOS</button>
+        <button class="tab-button" data-tab="windows">Windows</button>
+        <button class="tab-button" data-tab="linux">Linux</button>
+      </div>
+
+      <div class="tab-content active" id="tab-macos">
+        <h3>Install di macOS</h3>
+        <p>
+          Karena Pakpost belum di-notarize Apple, macOS bisa menandai aplikasi
+          sebagai <strong>damaged</strong> atau memblokir pembukaan. Ini normal
+          untuk aplikasi yang belum memiliki Apple Developer ID.
+        </p>
+        <ol>
+          <li>Download file <code>.dmg</code> sesuai Mac kamu (Intel atau Apple Silicon).</li>
+          <li>Buka <code>.dmg</code> dan drag Pakpost ke folder <strong>Applications</strong>.</li>
+          <li>
+            Saat pertama kali membuka, klik kanan ikon Pakpost di Applications,
+            pilih <strong>Open</strong>, lalu klik <strong>Open</strong> lagi.
+          </li>
+          <li>
+            Kalau muncul pesan <em>"Pakpost is damaged and can't be opened"</em>,
+            jalankan perintah berikut di Terminal:
+            <pre><code>xattr -dr com.apple.quarantine /Applications/Pakpost.app</code></pre>
+          </li>
+          <li>Buka Pakpost kembali dari Applications.</li>
+        </ol>
+        <p class="note">
+          <strong>Tips:</strong> Untuk pengalaman tanpa peringatan Gatekeeper,
+          diperlukan Apple Developer Program untuk signing + notarisasi.
+        </p>
+      </div>
+
+      <div class="tab-content" id="tab-windows">
+        <h3>Install di Windows</h3>
+        <p>
+          Download file <code>.exe</code> dan jalankan installer. Windows Defender
+          atau SmartScreen mungkin menampilkan peringatan karena installer belum
+          memiliki code signing certificate.
+        </p>
+        <ol>
+          <li>Download file <code>Pakpost_&lt;version&gt;_x64_win.exe</code>.</li>
+          <li>Jalankan installer dan ikuti langkah instalasi.</li>
+          <li>
+            Kalau muncul peringatan <em>Windows protected your PC</em>, klik
+            <strong>More info</strong> lalu <strong>Run anyway</strong>.
+          </li>
+        </ol>
+        <p class="note">
+          <strong>Tips:</strong> Peringatan SmartScreen akan hilang setelah
+          aplikasi memiliki Windows code signing certificate.
+        </p>
+      </div>
+
+      <div class="tab-content" id="tab-linux">
+        <h3>Install di Linux</h3>
+        <p>
+          Pakpost didistribusikan sebagai file <code>.AppImage</code> yang dapat
+          dijalankan langsung tanpa instalasi.
+        </p>
+        <ol>
+          <li>Download file <code>Pakpost_&lt;version&gt;_x64_linux.AppImage</code>.</li>
+          <li>Buka terminal di folder download, lalu jalankan:
+            <pre><code>chmod +x Pakpost_*.AppImage
+./Pakpost_*.AppImage</code></pre>
+          </li>
+          <li>
+            Kalau ingin shortcut di menu aplikasi, pindahkan AppImage ke
+            <code>~/.local/bin/</code> dan buat file <code>.desktop</code>.
+          </li>
+        </ol>
+      </div>
+    </section>
+
     <footer class="footer">
       <p>
         © <span id="year"></span> Pakpost.

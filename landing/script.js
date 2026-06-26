@@ -220,5 +220,38 @@ async function loadLatestRelease() {
   }
 }
 
+function initTabs() {
+  const tabButtons = document.querySelectorAll('.tab-button');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  function activateTab(platform) {
+    tabButtons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === platform);
+    });
+    tabContents.forEach((content) => {
+      content.classList.toggle('active', content.id === `tab-${platform}`);
+    });
+  }
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      activateTab(button.dataset.tab);
+    });
+  });
+
+  // Default to user's platform, fallback to macos.
+  const userPlatform = getUserPlatform();
+  if (userPlatform) {
+    const platformMap = {
+      macIntel: 'macos',
+      macSilicon: 'macos',
+      windows: 'windows',
+      linux: 'linux'
+    };
+    activateTab(platformMap[userPlatform]);
+  }
+}
+
 document.getElementById('year').textContent = new Date().getFullYear();
 loadLatestRelease();
+initTabs();
