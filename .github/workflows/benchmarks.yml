@@ -55,7 +55,7 @@ jobs:
           update-baseline: ${{ github.event.inputs.update-baseline || 'false' }}
 
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: benchmark-results-${{ matrix.os-name }}
