@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pakpost — API client desktop untuk macOS, Windows, dan Linux.">
+  <title>Pakpost — API Client</title>
+  <link rel="icon" type="image/png" href="logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <img src="logo.png" alt="Pakpost logo" class="logo" width="96" height="96">
+      <h1 class="title">Pakpost</h1>
+      <p class="tagline">API client desktop untuk macOS, Windows, dan Linux.</p>
+      <p class="subtitle">
+        Semua koleksi API disimpan di filesystem dalam format teks polos,
+        mudah dikelola dengan Git.
+      </p>
+    </section>
+
+    <section class="download" id="download">
+      <div id="loading" class="loading">Memuat versi terbaru...</div>
+
+      <div id="download-content" class="download-content hidden">
+        <p class="version" id="version"></p>
+        <p class="release-date" id="release-date"></p>
+
+        <div class="primary-download" id="primary-download"></div>
+
+        <div class="all-downloads">
+          <h3>Download untuk platform lain</h3>
+          <div class="platforms" id="platforms"></div>
+        </div>
+
+        <div class="release-notes">
+          <h3>Apa yang baru</h3>
+          <div id="release-notes"></div>
+        </div>
+      </div>
+
+      <div id="error" class="error hidden">
+        <p>Gagal memuat informasi rilis terbaru.</p>
+        <a href="https://github.com/iiibnuadam/pakpost/releases" target="_blank" rel="noopener noreferrer" class="button">
+          Lihat Semua Rilis di GitHub
+        </a>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>
+        © <span id="year"></span> Pakpost.
+        <a href="https://github.com/iiibnuadam/pakpost" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

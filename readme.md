@@ -6,8 +6,11 @@
 <h3 align="center">Pakpost — API Client untuk menguji dan mengeksplorasi API.</h3>
 
 <p align="center">
+  <a href="https://iiibnuadam.github.io/pakpost/">
+    <img src="https://img.shields.io/badge/Download-Landing%20Page-brightgreen" alt="Download landing page"/>
+  </a>
   <a href="https://github.com/iiibnuadam/pakpost/releases">
-    <img src="https://img.shields.io/badge/Download-Latest-brightgreen" alt="Download latest release"/>
+    <img src="https://img.shields.io/badge/Download-GitHub%20Releases-blue" alt="Download latest release"/>
   </a>
   <a href="https://github.com/iiibnuadam/pakpost/actions/workflows/release.yml">
     <img src="https://github.com/iiibnuadam/pakpost/actions/workflows/release.yml/badge.svg" alt="Release workflow"/>
@@ -23,8 +26,13 @@ jadi mudah dikelola dengan Git atau version control lainnya.
 
 ## Download
 
-Installer tersedia untuk **macOS**, **Windows**, dan **Linux** di halaman
-[Releases](https://github.com/iiibnuadam/pakpost/releases).
+Installer tersedia untuk **macOS**, **Windows**, dan **Linux** di landing page:
+
+👉 **[pakpost.app](https://iiibnuadam.github.io/pakpost/)**
+
+Landing page akan otomatis mendeteksi sistem operasi kamu dan menampilkan
+download yang paling sesuai. Atau pilih file sesuai platform di halaman
+[Releases](https://github.com/iiibnuadam/pakpost/releases):
 
 Pilih file sesuai platform:
 
