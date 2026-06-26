@@ -1,224 +1,114 @@
 <br />
-<img src="assets/images/logo-transparent.png" width="80"/>
+<p align="center">
+  <img src="assets/pakpost/logo.png" width="80" alt="Pakpost logo"/>
+</p>
 
-### Bruno - Opensource IDE for exploring and testing APIs.
+<h3 align="center">Pakpost — API Client untuk menguji dan mengeksplorasi API.</h3>
 
-[![GitHub version](https://badge.fury.io/gh/usebruno%2Fbruno.svg)](https://badge.fury.io/gh/usebruno%2Fbruno)
-[![CI](https://github.com/usebruno/bruno/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/usebruno/bruno/actions/workflows/tests.yml)
-[![Commit Activity](https://img.shields.io/github/commit-activity/m/usebruno/bruno)](https://github.com/usebruno/bruno/pulse)
-[![X](https://img.shields.io/twitter/follow/use_bruno?style=social&logo=x)](https://twitter.com/use_bruno)
-[![Website](https://img.shields.io/badge/Website-Visit-blue)](https://www.usebruno.com)
-[![Download](https://img.shields.io/badge/Download-Latest-brightgreen)](https://www.usebruno.com/downloads)
+<p align="center">
+  <a href="https://github.com/iiibnuadam/pakpost/releases">
+    <img src="https://img.shields.io/badge/Download-Latest-brightgreen" alt="Download latest release"/>
+  </a>
+  <a href="https://github.com/iiibnuadam/pakpost/actions/workflows/release.yml">
+    <img src="https://github.com/iiibnuadam/pakpost/actions/workflows/release.yml/badge.svg" alt="Release workflow"/>
+  </a>
+</p>
 
-**English**
-| [Українська](docs/readme/readme_ua.md)
-| [Русский](docs/readme/readme_ru.md)
-| [Türkçe](docs/readme/readme_tr.md)
-| [Deutsch](docs/readme/readme_de.md)
-| [Français](docs/readme/readme_fr.md)
-| [Português (BR)](docs/readme/readme_pt_br.md)
-| [한국어](docs/readme/readme_kr.md)
-| [বাংলা](docs/readme/readme_bn.md)
-| [Español](docs/readme/readme_es.md)
-| [Italiano](docs/readme/readme_it.md)
-| [Română](docs/readme/readme_ro.md)
-| [Polski](docs/readme/readme_pl.md)
-| [简体中文](docs/readme/readme_cn.md)
-| [正體中文](docs/readme/readme_zhtw.md)
-| [العربية](docs/readme/readme_ar.md)
-| [日本語](docs/readme/readme_ja.md)
-| [ქართული](docs/readme/readme_ka.md)
-| [Nederlands](docs/readme/readme_nl.md)
-| [فارسی](docs/readme/readme_fa.md)
+**Pakpost** adalah API client desktop yang dibangun di atas [Bruno](https://www.usebruno.com/).
+Semua koleksi API disimpan langsung di filesystem-mu dalam format teks polos,
+jadi mudah dikelola dengan Git atau version control lainnya.
 
-Bruno is a new and innovative API client, aimed at revolutionizing the status quo represented by Postman and similar tools out there.
+> Pakpost masih dalam tahap pengembangan aktif. Fitur dan tampilan akan terus
+> diperbarui melalui mekanisme auto-update.
 
-Bruno stores your collections directly in a folder on your filesystem. We use a plain text markup language, Bru, to save information about API requests.
+## Download
 
-You can use Git or any version control of your choice to collaborate over your API collections.
+Installer tersedia untuk **macOS**, **Windows**, dan **Linux** di halaman
+[Releases](https://github.com/iiibnuadam/pakpost/releases).
 
-Bruno is offline-only. There are no plans to add cloud-sync to Bruno, ever. We value your data privacy and believe it should stay on your device. Read our long-term vision [here](https://github.com/usebruno/bruno/discussions/269)
+Pilih file sesuai platform:
 
-[Download Bruno](https://www.usebruno.com/downloads)
+| Platform            | File installer                         |
+| ------------------- | -------------------------------------- |
+| macOS Intel         | `Pakpost_<version>_x64_mac.dmg`        |
+| macOS Apple Silicon | `Pakpost_<version>_arm64_mac.dmg`      |
+| Windows             | `Pakpost_<version>_x64_win.exe`        |
+| Linux AppImage      | `Pakpost_<version>_x64_linux.AppImage` |
 
-📢 Watch our recent talk at India FOSS 3.0 Conference [here](https://www.youtube.com/watch?v=7bSMFpbcPiY)
+## Auto Update
 
-![bruno](assets/images/landing-2-dark.png#gh-light-mode-only)
-![bruno](assets/images/landing-2-light.png#gh-dark-mode-only) <br /><br />
+Pakpost mendukung auto-update. Setelah terinstall, aplikasi akan otomatis
+mengecek versi terbaru dari GitHub Releases saat startup. Jika ada update,
+akan muncul notifikasi untuk download dan restart.
 
-## Commercial Versions ✨
+> User cukup install manual sekali. Setelah itu update berikutnya berjalan otomatis.
 
-Majority of our features are free and open source.
-We strive to strike a harmonious balance between [open-source principles and sustainability](https://github.com/usebruno/bruno/discussions/269)
+## Build dari Source
 
-You can explore our [paid versions](https://www.usebruno.com/pricing) to see if there are additional features that you or your team may find useful! <br/>
+```bash
+# 1. Install dependencies
+npm install
 
-## Table of Contents
+# 2. Build web app
+npm run build:web
 
-- [Installation](#installation)
-- [Bruno CLI](#bruno-cli)
-- [Run with Docker](#run-with-docker)
-- [Features](#features)
-  - [Run across multiple platforms 🖥️](#run-across-multiple-platforms-%EF%B8%8F)
-  - [Collaborate via Git 👩‍💻🧑‍💻](#collaborate-via-git-%E2%80%8D%E2%80%8D)
-- [Important Links 📌](#important-links-)
-- [Showcase 🎥](#showcase-)
-- [Share Testimonials 📣](#share-testimonials-)
-- [Publishing to New Package Managers](#publishing-to-new-package-managers)
-- [Stay in touch 🌐](#stay-in-touch-)
-- [Trademark](#trademark)
-- [Contribute 👩‍💻🧑‍💻](#contribute-%E2%80%8D%E2%80%8D)
-- [Authors](#authors)
-- [License 📄](#license-)
-
-## Installation
-
-Bruno is available as binary download [on our website](https://www.usebruno.com/downloads) for Mac, Windows and Linux.
-
-You can also install Bruno via package managers like Homebrew, Chocolatey, Scoop, Snap, Flatpak and Apt.
-
-```sh
-# On Mac via Homebrew
-brew install bruno
-
-# On Windows via Chocolatey
-choco install bruno
-
-# On Windows via Scoop
-scoop bucket add extras
-scoop install bruno
-
-# On Windows via winget
-winget install Bruno.Bruno
-
-# On Linux via Snap
-snap install bruno
-
-# On Linux via Flatpak
-flatpak install com.usebruno.Bruno
-
-# On Arch Linux via AUR
-yay -S bruno
-
-# On Linux via Apt
-sudo mkdir -p /etc/apt/keyrings
-sudo apt update && sudo apt install gpg curl
-curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9FA6017ECABE0266" \
-  | gpg --dearmor \
-  | sudo tee /etc/apt/keyrings/bruno.gpg > /dev/null
-sudo chmod 644 /etc/apt/keyrings/bruno.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/bruno.gpg] http://debian.usebruno.com/ bruno stable" \
-  | sudo tee /etc/apt/sources.list.d/bruno.list
-sudo apt update && sudo apt install bruno
+# 3. Build Electron untuk OS saat ini
+npm run build:electron
 ```
 
-## Bruno CLI
+Hasil build ada di `packages/bruno-electron/out/`.
 
-The **Bruno CLI** lets you run your API collections from the command line, which is ideal for automated testing and CI/CD pipelines. Install it from npm using the package manager of your choice:
+### Build & publish release ke GitHub
 
-```sh
-npm install -g @usebruno/cli
+Pastikan `GH_TOKEN` sudah diset sebagai environment variable, lalu:
+
+```bash
+npm run build:web
+
+UPDATE_PROVIDER=github \
+UPDATE_OWNER=iiibnuadam \
+UPDATE_REPO=pakpost \
+GH_TOKEN=ghp_xxx \
+PUBLISH=always \
+  npm run build:electron
 ```
 
-Navigate to the directory containing your collection and run it:
+Atau push tag untuk trigger GitHub Actions:
 
-```sh
-# Run every request in the collection
-bru run
-
-# Run a single request
-bru run request.bru
-
-# Run a folder against a specific environment
-bru run folder --env Local
+```bash
+git tag v1.0.0
+git push origin main --tags
 ```
 
-For the full command reference, see the [Bruno CLI documentation](https://docs.usebruno.com/bru-cli/overview).
+Workflow `.github/workflows/release.yml` akan otomatis build untuk macOS,
+Windows, dan Linux, lalu mengupload ke GitHub Releases.
 
-## Run with Docker
+## Catatan macOS
 
-Official Docker images for the **Bruno CLI** let you run API collections in CI/CD pipelines and locally without installing Node.js or npm on the host. Images are published to both [Docker Hub](https://hub.docker.com/r/usebruno/cli) and the [GitHub Container Registry](https://ghcr.io/usebruno/cli) on every CLI release, with `alpine` and `debian` variants for `linux/amd64` and `linux/arm64`.
+Karena Pakpost belum di-sign dan di-notarize oleh Apple, macOS bisa
+menandai aplikasi sebagai **damaged** atau memblokir pembukaan.
 
-```sh
-# Pull from Docker Hub
-docker pull usebruno/cli:latest
+Solusinya:
 
-# Or pull from the GitHub Container Registry
-docker pull ghcr.io/usebruno/cli:latest
+- Saat pertama kali buka, akan muncul dialog **"Hapus Quarantine"**. Klik
+  tombol tersebut supaya Pakpost bisa berjalan normal.
+- Atau jalankan manual di Terminal:
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/Pakpost.app
+  ```
+- Untuk pengalaman tanpa peringatan Gatekeeper, diperlukan Apple Developer
+  Program (berbayar) untuk signing + notarisasi.
 
-# Run a collection by mounting the current directory
-docker run -v $(pwd):/bruno usebruno/cli run
-```
+## Fitur Utama
 
-For variants, tag matrix, environment files, and CI examples (GitHub Actions, GitLab CI, Jenkins), see the full [Bruno CLI Docker documentation](https://docs.usebruno.com/bru-cli/docker).
+- 🖥️ **Cross-platform** — macOS, Windows, Linux.
+- 📝 **Collections di filesystem** — semua request disimpan sebagai file teks,
+  mudah dikerjakan dengan Git.
+- 🚀 **Auto-update** — selalu dapat versi terbaru dari GitHub Releases.
+- 🔒 **Offline-first** — data tetap di perangkatmu.
+- 🧪 **API testing** — support request, environments, asserts, dan collection runner.
 
-## Features
+## Lisensi
 
-### Run across multiple platforms 🖥️
-
-![bruno](assets/images/run-anywhere.png) <br /><br />
-
-### Collaborate via Git 👩‍💻🧑‍💻
-
-Or any version control system of your choice
-
-![bruno](assets/images/version-control.png) <br /><br />
-
-## Important Links 📌
-
-- [Our Long Term Vision](https://github.com/usebruno/bruno/discussions/269)
-- [Roadmap](https://www.usebruno.com/roadmap)
-- [Documentation](https://docs.usebruno.com)
-- [Stack Overflow](https://stackoverflow.com/questions/tagged/bruno)
-- [Website](https://www.usebruno.com)
-- [Pricing](https://www.usebruno.com/pricing)
-- [Download](https://www.usebruno.com/downloads)
-
-## Showcase 🎥
-
-- [Testimonials](https://github.com/usebruno/bruno/discussions/343)
-- [Knowledge Hub](https://github.com/usebruno/bruno/discussions/386)
-- [Scriptmania](https://github.com/usebruno/bruno/discussions/385)
-
-## Share Testimonials 📣
-
-If Bruno has helped you at work and your teams, please don't forget to share your [testimonials on our GitHub discussion](https://github.com/usebruno/bruno/discussions/343)
-
-## Publishing to New Package Managers
-
-Please see [here](publishing.md) for more information.
-
-## Stay in touch 🌐
-
-[𝕏 (Twitter)](https://twitter.com/use_bruno) <br />
-[Website](https://www.usebruno.com) <br />
-[Discord](https://discord.com/invite/KgcZUncpjq) <br />
-[LinkedIn](https://www.linkedin.com/company/usebruno)
-
-## Trademark
-
-**Name**
-
-`Bruno` is a trademark held by [Anoop M D](https://www.helloanoop.com/)
-
-**Logo**
-
-The logo is sourced from [OpenMoji](https://openmoji.org/library/emoji-1F436/). License: CC [BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
-
-## Contribute 👩‍💻🧑‍💻
-
-I am happy that you are looking to improve bruno. Please check out the [contributing guide](contributing.md)
-
-Even if you are not able to make contributions via code, please don't hesitate to file bugs and feature requests that needs to be implemented to solve your use case.
-
-## Authors
-
-<div align="center">
-    <a href="https://github.com/usebruno/bruno/graphs/contributors">
-        <img src="https://contrib.rocks/image?repo=usebruno/bruno" />
-    </a>
-</div>
-
-## License 📄
-
-[MIT](license.md)
+Pakpost didistribusikan di bawah lisensi yang sama dengan Bruno.
+Lihat file [license.md](license.md) untuk detail lengkap.
