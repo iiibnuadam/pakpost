@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     strategy:
@@ -21,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -38,9 +41,19 @@ jobs:
           UPDATE_OWNER: iiibnuadam
           UPDATE_REPO: pakpost
           UPDATE_CHANNEL: latest
-          # Uncomment & isi kalau sudah punya sertifikat Apple untuk macOS signing + notarisasi.
+          # Uncomment baris-baris di bawah kalau sudah punya Apple Developer ID
+          # untuk code signing + notarisasi di macOS.
+          # Lihat: https://www.electron.build/code-signing
           # APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run build:electron
+
+      - name: Upload build artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pakpost-${{ matrix.os }}
+          path: packages/bruno-electron/out/
+          retention-days: 7

@@ -126,7 +126,11 @@ if (shouldSignAndNotarize) {
   config.afterSign = 'notarize.js';
 }
 
-if (updateProvider) {
+// Only configure publishing when explicitly requested (CI/release workflow).
+// Local builds should not attempt to publish to GitHub.
+const shouldPublish = process.env.PUBLISH === 'always' || process.env.CI === 'true';
+
+if (updateProvider && shouldPublish) {
   const publishConfig = {
     provider: updateProvider,
     channel: updateChannel

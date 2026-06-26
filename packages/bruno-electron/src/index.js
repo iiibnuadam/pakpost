@@ -64,7 +64,9 @@ const SystemMonitor = require('./app/system-monitor');
 const { getIsRunningInRosetta } = require('./utils/arch');
 const { handleAppProtocolUrl, getAppProtocolUrlFromArgv } = require('./utils/deeplink');
 const { isQuarantined, promptAndRemoveQuarantine } = require('./utils/gatekeeper');
-const registerUpdaterIpc = require('./ipc/updater');
+// Auto-update dinonaktifkan sementara karena belum ada code signing untuk macOS/Windows.
+// Aktifkan kembali setelah Apple Developer ID dan Windows code signing certificate tersedia.
+// const registerUpdaterIpc = require('./ipc/updater');
 
 const systemMonitor = new SystemMonitor();
 const terminalManager = new TerminalManager();
@@ -495,7 +497,8 @@ app.on('ready', async () => {
   registerAiIpc(mainWindow);
   registerAiAutocompleteIpc(mainWindow);
   registerMountIpc();
-  registerUpdaterIpc(mainWindow);
+  // Auto-update dinonaktifkan sementara (lihat penjelasan di atas).
+  // registerUpdaterIpc(mainWindow);
 
   // Internal delegator
   ipcMain.handle('main:cache-clear', async () => {

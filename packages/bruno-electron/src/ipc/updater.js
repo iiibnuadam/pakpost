@@ -22,7 +22,22 @@ const registerUpdaterIpc = (mainWindow) => {
   });
 
   autoUpdater.on('error', (error) => {
-    mainWindow?.webContents?.send('main:update-error', error?.message || String(error));
+    const message = error?.message || String(error);
+
+    // Suppress expected errors when there is no published release yet.
+    if (
+      message.includes('No published versions') ||
+      message.includes('latest.yml') ||
+      message.includes('latest-mac.yml') ||
+      message.includes('latest-win.yml') ||
+      message.includes('latest-linux.yml')
+    ) {
+      console.log('[updater] suppressed expected error:', message);
+      return;
+    }
+
+    console.error('[updater] error:', error);
+    mainWindow?.webContents?.send('main:update-error', message);
   });
 
   ipcMain.handle('renderer:check-for-updates', async () => {
@@ -30,6 +45,13 @@ const registerUpdaterIpc = (mainWindow) => {
       return await autoUpdater.checkForUpdates();
     } catch (error) {
       console.error('[updater] check for updates failed:', error);
+      const message = error?.message || String(error);
+
+      // Return gracefully when no release has been published yet.
+      if (message.includes('No published versions')) {
+        return { updateInfo: null, cancellationToken: null };
+      }
+
       throw error;
     }
   });

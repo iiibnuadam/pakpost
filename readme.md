@@ -19,7 +19,7 @@ Semua koleksi API disimpan langsung di filesystem-mu dalam format teks polos,
 jadi mudah dikelola dengan Git atau version control lainnya.
 
 > Pakpost masih dalam tahap pengembangan aktif. Fitur dan tampilan akan terus
-> diperbarui melalui mekanisme auto-update.
+> diperbarui.
 
 ## Download
 
@@ -37,11 +37,14 @@ Pilih file sesuai platform:
 
 ## Auto Update
 
-Pakpost mendukung auto-update. Setelah terinstall, aplikasi akan otomatis
-mengecek versi terbaru dari GitHub Releases saat startup. Jika ada update,
-akan muncul notifikasi untuk download dan restart.
-
-> User cukup install manual sekali. Setelah itu update berikutnya berjalan otomatis.
+> **Auto-update saat ini dinonaktifkan.** Karena Pakpost belum memiliki code
+> signing untuk macOS dan Windows, fitur auto-update dimatikan sementara.
+>
+> Untuk mendapatkan versi terbaru, download ulang installer dari halaman
+> [Releases](https://github.com/iiibnuadam/pakpost/releases).
+>
+> Auto-update akan diaktifkan kembali setelah Apple Developer ID dan
+> Windows code signing certificate tersedia.
 
 ## Build dari Source
 
@@ -60,6 +63,22 @@ Hasil build ada di `packages/bruno-electron/out/`.
 
 ### Build & publish release ke GitHub
 
+#### Otomatis via GitHub Actions (direkomendasikan)
+
+1. Update versi di `packages/bruno-electron/package.json`.
+2. Commit dan push perubahan.
+3. Buat tag dan push:
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+Workflow `.github/workflows/release.yml` akan otomatis build untuk macOS,
+Windows, dan Linux, lalu mengupload installer ke GitHub Releases.
+
+#### Manual dari lokal
+
 Pastikan `GH_TOKEN` sudah diset sebagai environment variable, lalu:
 
 ```bash
@@ -73,15 +92,9 @@ PUBLISH=always \
   npm run build:electron
 ```
 
-Atau push tag untuk trigger GitHub Actions:
-
-```bash
-git tag v1.0.0
-git push origin main --tags
-```
-
-Workflow `.github/workflows/release.yml` akan otomatis build untuk macOS,
-Windows, dan Linux, lalu mengupload ke GitHub Releases.
+> `PUBLISH=always` diperlukan agar `electron-builder` mengupload hasil build
+> ke GitHub Releases. Tanpa env ini, build hanya menghasilkan file installer
+> di lokal tanpa publish.
 
 ## Catatan macOS
 
@@ -104,7 +117,6 @@ Solusinya:
 - 🖥️ **Cross-platform** — macOS, Windows, Linux.
 - 📝 **Collections di filesystem** — semua request disimpan sebagai file teks,
   mudah dikerjakan dengan Git.
-- 🚀 **Auto-update** — selalu dapat versi terbaru dari GitHub Releases.
 - 🔒 **Offline-first** — data tetap di perangkatmu.
 - 🧪 **API testing** — support request, environments, asserts, dan collection runner.
 
