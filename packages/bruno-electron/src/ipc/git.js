@@ -25,6 +25,7 @@ const {
   fetchChanges,
   pushGitChanges,
   pullGitChanges,
+  checkPullStatus,
   resolveConflict,
   abortConflictResolution,
   createStash,
@@ -233,7 +234,7 @@ const registerGitIpc = (mainWindow) => {
     }
   }));
 
-  ipcMain.handle('renderer:pull-git-changes', withRepoLock(async (event, { collectionPath, remote, remoteBranch, strategy }) => {
+  ipcMain.handle('renderer:pull-git-changes', withRepoLock(async (event, { collectionPath, remote, remoteBranch, strategy, stashBeforePull }) => {
     try {
       const gitRootPath = getCollectionGitRootPath(collectionPath);
       if (!gitRootPath) {
@@ -245,8 +246,21 @@ const registerGitIpc = (mainWindow) => {
         processUid,
         remote: remote || 'origin',
         remoteBranch: remoteBranch || 'HEAD',
-        strategy: strategy || '--ff-only'
+        strategy: strategy || '--ff-only',
+        stashBeforePull: Boolean(stashBeforePull)
       });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }));
+
+  ipcMain.handle('renderer:check-git-pull-status', withRepoLock(async (event, { collectionPath, remote, remoteBranch }) => {
+    try {
+      const gitRootPath = getCollectionGitRootPath(collectionPath);
+      if (!gitRootPath) {
+        throw new Error('Not a git repository');
+      }
+      return await checkPullStatus(gitRootPath, remote || 'origin', remoteBranch || 'HEAD');
     } catch (error) {
       return Promise.reject(error);
     }

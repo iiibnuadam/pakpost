@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import toast from 'react-hot-toast';
 
 const initialState = {
-  // Map of collectionUid -> { status, logs, branches, currentBranch, diff, selectedFile, visualDiff, graph, commitFiles, loading, error }
+  // Map of collectionUid -> { status, pullStatus, logs, branches, currentBranch, diff, selectedFile, visualDiff, graph, commitFiles, loading, error }
   collectionGit: {},
   // Map of workspaceUid -> { autoCommit, autoPush, autoPull, autoPullInterval, gitUsername, gitToken }
   workspaceSettings: {},
@@ -40,6 +40,13 @@ export const gitSlice = createSlice({
       }
       state.collectionGit[collectionUid].status = status;
       state.collectionGit[collectionUid].error = null;
+    },
+    setGitPullStatus: (state, action) => {
+      const { collectionUid, pullStatus } = action.payload;
+      if (!state.collectionGit[collectionUid]) {
+        state.collectionGit[collectionUid] = {};
+      }
+      state.collectionGit[collectionUid].pullStatus = pullStatus;
     },
     setGitLogs: (state, action) => {
       const { collectionUid, logs } = action.payload;
@@ -134,6 +141,7 @@ export const {
   setGitLoading,
   setGitError,
   setGitStatus,
+  setGitPullStatus,
   setGitLogs,
   setGitBranches,
   setGitDiff,
@@ -545,24 +553,66 @@ export const abortGitMerge = (collection) => async (dispatch) => {
   }
 };
 
-export const fetchGitChanges = (collection, remote = 'origin') => async (dispatch) => {
+export const fetchGitChanges = (collection, remote = 'origin', options = {}) => async (dispatch) => {
   if (!collection?.pathname) return;
 
-  dispatch(setGitLoading({ collectionUid: collection.uid, loading: true }));
+  const { silent = false } = options;
+
+  if (!silent) {
+    dispatch(setGitLoading({ collectionUid: collection.uid, loading: true }));
+  }
   try {
     const { ipcRenderer } = window;
     await ipcRenderer.invoke('renderer:fetch-git-changes', {
       collectionPath: collection.pathname,
       remote
     });
-    await dispatch(fetchGitStatus(collection));
+    await dispatch(fetchGitStatus(collection, { skipLogs: true, silent }));
   } catch (error) {
     console.error('[Git] Error fetching changes:', error);
+    if (!silent) {
+      dispatch(setGitError({ collectionUid: collection.uid, error: error.message }));
+    }
+    throw error;
+  } finally {
+    if (!silent) {
+      dispatch(setGitLoading({ collectionUid: collection.uid, loading: false }));
+    }
+  }
+};
+
+export const checkGitPullStatus = (collection, options = {}) => async (dispatch) => {
+  if (!collection?.pathname) return;
+
+  dispatch(setGitLoading({ collectionUid: collection.uid, loading: true }));
+  try {
+    const { ipcRenderer } = window;
+    const pullStatus = await ipcRenderer.invoke('renderer:check-git-pull-status', {
+      collectionPath: collection.pathname,
+      remote: options.remote || 'origin',
+      remoteBranch: options.remoteBranch || 'HEAD'
+    });
+    dispatch(setGitPullStatus({ collectionUid: collection.uid, pullStatus }));
+    return pullStatus;
+  } catch (error) {
+    console.error('[Git] Error checking pull status:', error);
     dispatch(setGitError({ collectionUid: collection.uid, error: error.message }));
     throw error;
   } finally {
     dispatch(setGitLoading({ collectionUid: collection.uid, loading: false }));
   }
+};
+
+const isFastForwardError = (error) => {
+  if (!error) return false;
+  const message = typeof error === 'string' ? error : error.message || '';
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('not possible to fast-forward')
+    || lower.includes('cannot fast-forward')
+    || lower.includes('non-fast-forward')
+    || lower.includes('would be overwritten')
+  );
 };
 
 export const pullGitChanges = (collection, options = {}) => async (dispatch) => {
@@ -575,7 +625,8 @@ export const pullGitChanges = (collection, options = {}) => async (dispatch) => 
       collectionPath: collection.pathname,
       remote: options.remote || 'origin',
       remoteBranch: options.remoteBranch || 'HEAD',
-      strategy: options.strategy || '--ff-only'
+      strategy: options.strategy || '--ff-only',
+      stashBeforePull: options.stashBeforePull || false
     });
     await dispatch(fetchGitStatus(collection));
   } catch (error) {

@@ -854,7 +854,7 @@ const pushGitChanges = async (win, { gitRootPath, processUid, remote, remoteBran
 };
 
 const pullGitChanges = async (win, data) => {
-  const { gitRootPath, processUid, remote, remoteBranch, strategy } = data;
+  const { gitRootPath, processUid, remote, remoteBranch, strategy, stashBeforePull } = data;
   const validStrategies = ['--no-rebase', '--ff-only', '--rebase'];
   if (!validStrategies.includes(strategy)) {
     throw new Error('Invalid strategy');
@@ -864,16 +864,90 @@ const pullGitChanges = async (win, data) => {
   // supaya Git tidak error/bingung saat branch local dan remote divergen.
   await ensurePullConfig(gitRootPath);
 
+  // Optionally stash local changes before pulling so that the pull can proceed
+  // even when the working tree is dirty. The stash is popped afterwards.
+  let stashCreated = false;
+  if (stashBeforePull) {
+    try {
+      const git = getSimpleGitInstanceForPath(gitRootPath);
+      const status = await git.status();
+      const hasLocalChanges = status.files && status.files.length > 0;
+      if (hasLocalChanges) {
+        await git.stash(['push', '-m', 'pakpost-auto-stash-before-pull']);
+        stashCreated = true;
+      }
+    } catch (stashError) {
+      console.warn('[git] Failed to stash before pull:', stashError.message);
+      throw new Error(`Failed to stash local changes: ${stashError.message}`);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const git = getSimpleGitInstanceForPath(gitRootPath);
-    git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true })).pull(remote, remoteBranch, [strategy], (err, res) => {
+    git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true })).pull(remote, remoteBranch, [strategy], async (err, res) => {
       if (err) {
+        if (stashCreated) {
+          try {
+            await git.stash(['pop']);
+          } catch (popErr) {
+            console.warn('[git] Failed to pop stash after failed pull:', popErr.message);
+          }
+        }
         reject(err);
       } else {
+        if (stashCreated) {
+          try {
+            await git.stash(['pop']);
+          } catch (popErr) {
+            console.warn('[git] Failed to pop stash after successful pull:', popErr.message);
+            // If pop fails because of conflicts, the repo is in a merge state.
+            // The UI can detect this via git status and show the conflict resolver.
+          }
+        }
         resolve(res);
       }
     });
   });
+};
+
+const checkPullStatus = async (gitRootPath, remote = 'origin', remoteBranch = 'HEAD') => {
+  const git = getSimpleGitInstanceForPath(gitRootPath);
+
+  try {
+    const status = await git.status(['--porcelain']);
+    const hasLocalChanges = status.files && status.files.length > 0;
+
+    const aheadBehind = await getAheadBehindCount(gitRootPath);
+
+    let canFastForward = false;
+    let isDiverged = false;
+
+    if (aheadBehind.behind > 0) {
+      try {
+        // Check if HEAD is an ancestor of the remote branch.
+        // If yes, a fast-forward pull is possible.
+        const remoteRef = remoteBranch === 'HEAD' ? `${remote}/${status.tracking || 'HEAD'}` : `${remote}/${remoteBranch}`;
+        await git.raw(['merge-base', '--is-ancestor', 'HEAD', remoteRef]);
+        canFastForward = true;
+      } catch (ancestorErr) {
+        // merge-base exits with non-zero when HEAD is not an ancestor.
+        canFastForward = false;
+        isDiverged = aheadBehind.ahead > 0;
+      }
+    }
+
+    return {
+      hasLocalChanges,
+      ahead: aheadBehind.ahead,
+      behind: aheadBehind.behind,
+      canFastForward,
+      isDiverged,
+      tracking: status.tracking || null
+    };
+  } catch (error) {
+    console.error('[git] Error checking pull status:', error);
+    throw error;
+  }
 };
 
 async function getChangedFilesInCollectionGit(_gitRootPath, _collectionPath) {
@@ -2077,6 +2151,7 @@ module.exports = {
   canPush,
   pushGitChanges,
   pullGitChanges,
+  checkPullStatus,
   initGit,
   getCollectionGitData,
   getStagedFileDiff,

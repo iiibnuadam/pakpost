@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import StyledWrapper from './StyledWrapper';
 import GitDiffViewer from '../GitDiffViewer';
 import GitCommitDetail from '../GitCommitDetail';
+import GitPullOptionsModal from '../GitPullOptionsModal';
 import {
   fetchGitStatus,
   fetchGitDiff,
@@ -29,6 +30,7 @@ import {
   mergeGitBranch,
   fetchGitChanges,
   pullGitChanges,
+  checkGitPullStatus,
   pushGitChanges,
   resolveGitConflict,
   abortGitMerge,
@@ -58,6 +60,8 @@ const GitTab = ({ workspace }) => {
   const [commitMessage, setCommitMessage] = useState('');
   const [stashMessage, setStashMessage] = useState('');
   const [operation, setOperation] = useState(null);
+  const [showPullOptions, setShowPullOptions] = useState(false);
+  const [pullStatusForModal, setPullStatusForModal] = useState(null);
   const [initRemoteUrl, setInitRemoteUrl] = useState('');
   const [historySelectedHash, setHistorySelectedHash] = useState(null);
   const [historyPanelWidth, setHistoryPanelWidth] = useState(320);
@@ -102,6 +106,8 @@ const GitTab = ({ workspace }) => {
   useEffect(() => {
     dispatch(fetchGitStatus(gitTarget));
     dispatch(fetchGitStashes(gitTarget));
+    // Silently fetch remote changes so the ahead/behind badge is up to date.
+    dispatch(fetchGitChanges(gitTarget, 'origin', { silent: true })).catch(() => {});
   }, [gitTarget.uid, gitTarget.pathname, workspaceUid, dispatch]);
 
   // Clear diff view when the selected file is no longer in the changed files list
@@ -231,12 +237,45 @@ const GitTab = ({ workspace }) => {
       .finally(() => setOperation(null));
   };
 
-  const handlePull = () => {
+  const executePull = (options = {}) => {
     setOperation('pull');
-    dispatch(pullGitChanges(gitTarget))
+    dispatch(pullGitChanges(gitTarget, options))
       .then(() => toast.success('Pulled'))
-      .catch((err) => toast.error(err?.message || 'Failed to pull'))
+      .catch((err) => {
+        const message = err?.message || 'Failed to pull';
+        toast.error(message);
+      })
       .finally(() => setOperation(null));
+  };
+
+  const handlePull = () => {
+    setOperation('checking-pull');
+    dispatch(checkGitPullStatus(gitTarget))
+      .then((pullStatus) => {
+        // If everything is clean and we can fast-forward, pull immediately.
+        if (pullStatus?.canFastForward && !pullStatus?.hasLocalChanges) {
+          executePull({ strategy: '--ff-only' });
+          return;
+        }
+        // Otherwise show the options modal so the user can decide.
+        setPullStatusForModal(pullStatus);
+        setShowPullOptions(true);
+      })
+      .catch((err) => {
+        toast.error(err?.message || 'Failed to check pull status');
+      })
+      .finally(() => setOperation(null));
+  };
+
+  const handlePullWithOptions = ({ strategy, stashBeforePull }) => {
+    setShowPullOptions(false);
+    setPullStatusForModal(null);
+    executePull({ strategy, stashBeforePull });
+  };
+
+  const handleClosePullOptions = () => {
+    setShowPullOptions(false);
+    setPullStatusForModal(null);
   };
 
   const handlePush = () => {
@@ -927,6 +966,13 @@ const GitTab = ({ workspace }) => {
       {activeTab === 'branches' && renderBranchesTab()}
       {activeTab === 'stashes' && renderStashesTab()}
       {activeTab === 'history' && renderHistoryTab()}
+      {showPullOptions && (
+        <GitPullOptionsModal
+          pullStatus={pullStatusForModal}
+          onCancel={handleClosePullOptions}
+          onConfirm={handlePullWithOptions}
+        />
+      )}
     </StyledWrapper>
   );
 };
