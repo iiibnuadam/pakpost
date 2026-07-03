@@ -241,9 +241,9 @@ const GitTab = ({ workspace }) => {
     setOperation('pull');
     dispatch(pullGitChanges(gitTarget, options))
       .then(() => toast.success('Pulled'))
-      .catch((err) => {
-        const message = err?.message || 'Failed to pull';
-        toast.error(message);
+      .catch(() => {
+        // Errors are already handled and toasted by pullGitChanges.
+        // We avoid showing the raw git output here.
       })
       .finally(() => setOperation(null));
   };

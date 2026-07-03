@@ -632,10 +632,21 @@ export const pullGitChanges = (collection, options = {}) => async (dispatch) => 
   } catch (error) {
     console.error('[Git] Error pulling changes:', error);
     const message = error.message || 'Failed to pull';
+
     if (isConflictError(error)) {
-      toast.error(`Git: Merge conflict detected. Please resolve conflicts manually.`);
+      // Refresh status so the conflicted files appear in the Changes tab.
+      await dispatch(fetchGitStatus(collection, { skipLogs: true }));
+      toast.error('Git: Conflict detected. Please resolve the conflicted files in the Changes tab.', {
+        duration: 5000
+      });
+      dispatch(setGitError({
+        collectionUid: collection.uid,
+        error: 'Conflict detected. Resolve the conflicted files in the Changes tab.'
+      }));
+    } else {
+      toast.error(message);
+      dispatch(setGitError({ collectionUid: collection.uid, error: message }));
     }
-    dispatch(setGitError({ collectionUid: collection.uid, error: message }));
     throw error;
   } finally {
     dispatch(setGitLoading({ collectionUid: collection.uid, loading: false }));
