@@ -639,13 +639,8 @@ export const pullGitChanges = (collection, options = {}) => async (dispatch) => 
       toast.error('Git: Conflict detected. Please resolve the conflicted files in the Changes tab.', {
         duration: 5000
       });
-      dispatch(setGitError({
-        collectionUid: collection.uid,
-        error: 'Conflict detected. Resolve the conflicted files in the Changes tab.'
-      }));
     } else {
       toast.error(message);
-      dispatch(setGitError({ collectionUid: collection.uid, error: message }));
     }
     throw error;
   } finally {
