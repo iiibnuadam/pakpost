@@ -9,7 +9,7 @@
   },
   "private": true,
   "main": "src/index.js",
-  "author": "Anoop M D <anoop.md1421@gmail.com> (https://helloanoop.com/)",
+  "author": "Ibnu Adam <ibnuadam.biz@gmail.com> (https://www.ibnuadam.tech)",
   "scripts": {
     "clean": "rimraf dist",
     "dev": "electron .",
