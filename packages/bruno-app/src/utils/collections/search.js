@@ -5,7 +5,11 @@ import find from 'lodash/find';
 export const doesRequestMatchSearchText = (request, searchText = '') => {
   const term = searchText.trim().toLowerCase();
   if (!term) return true;
-  return request?.name?.toLowerCase().includes(term);
+
+  const name = request?.name?.toLowerCase() || '';
+  const url = request?.request?.url?.toLowerCase() || '';
+
+  return name.includes(term) || url.includes(term);
 };
 
 export const doesFolderHaveItemsMatchSearchText = (item, searchText = '') => {
