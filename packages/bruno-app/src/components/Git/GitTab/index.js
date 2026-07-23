@@ -15,6 +15,7 @@ import StyledWrapper from './StyledWrapper';
 import GitDiffViewer from '../GitDiffViewer';
 import GitCommitDetail from '../GitCommitDetail';
 import GitPullOptionsModal from '../GitPullOptionsModal';
+import GitConflictEditorModal from '../GitConflictEditorModal';
 import {
   fetchGitStatus,
   fetchGitDiff,
@@ -33,6 +34,8 @@ import {
   checkGitPullStatus,
   pushGitChanges,
   resolveGitConflict,
+  readConflictFile,
+  saveConflictFile,
   abortGitMerge,
   createGitStash,
   fetchGitStashes,
@@ -62,6 +65,9 @@ const GitTab = ({ workspace }) => {
   const [operation, setOperation] = useState(null);
   const [showPullOptions, setShowPullOptions] = useState(false);
   const [pullStatusForModal, setPullStatusForModal] = useState(null);
+  const [conflictEditorFile, setConflictEditorFile] = useState(null);
+  const [conflictEditorContent, setConflictEditorContent] = useState('');
+  const [conflictEditorSaving, setConflictEditorSaving] = useState(false);
   const [initRemoteUrl, setInitRemoteUrl] = useState('');
   const [historySelectedHash, setHistorySelectedHash] = useState(null);
   const [historyPanelWidth, setHistoryPanelWidth] = useState(320);
@@ -324,10 +330,43 @@ const GitTab = ({ workspace }) => {
       .catch((err) => toast.error(err?.message || 'Failed to discard'));
   };
 
+  const openConflictEditor = async (file) => {
+    try {
+      const content = await dispatch(readConflictFile(gitTarget, file.path));
+      setConflictEditorContent(content || '');
+      setConflictEditorFile(file);
+    } catch (err) {
+      toast.error(err?.message || 'Failed to open conflict editor');
+    }
+  };
+
+  const closeConflictEditor = () => {
+    setConflictEditorFile(null);
+    setConflictEditorContent('');
+    setConflictEditorSaving(false);
+  };
+
+  const handleSaveConflictResolution = async (content) => {
+    if (!conflictEditorFile) return;
+    setConflictEditorSaving(true);
+    try {
+      await dispatch(saveConflictFile(gitTarget, conflictEditorFile.path, content));
+      toast.success(`Resolved ${conflictEditorFile.path} (manual)`);
+      closeConflictEditor();
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save conflict resolution');
+    } finally {
+      setConflictEditorSaving(false);
+    }
+  };
+
   const handleResolveConflict = (file, strategy) => {
     dispatch(resolveGitConflict(gitTarget, file.path, strategy))
       .then(() => toast.success(`Resolved ${file.path} (${strategy})`))
-      .catch((err) => toast.error(err?.message || 'Failed to resolve conflict'));
+      .catch((err) => {
+        toast.error(err?.message || 'Failed to resolve conflict');
+        openConflictEditor(file);
+      });
   };
 
   const handleAbortMerge = () => {
@@ -462,6 +501,12 @@ const GitTab = ({ workspace }) => {
                   </button>
                   <button className="git-file-action-btn theirs" onClick={() => handleResolveConflict(file, 'theirs')}>
                     Theirs
+                  </button>
+                  <button className="git-file-action-btn both" onClick={() => handleResolveConflict(file, 'both')}>
+                    Both
+                  </button>
+                  <button className="git-file-action-btn edit" onClick={() => openConflictEditor(file)}>
+                    Edit
                   </button>
                 </>
               )}
@@ -971,6 +1016,15 @@ const GitTab = ({ workspace }) => {
           pullStatus={pullStatusForModal}
           onCancel={handleClosePullOptions}
           onConfirm={handlePullWithOptions}
+        />
+      )}
+      {conflictEditorFile && (
+        <GitConflictEditorModal
+          file={conflictEditorFile}
+          content={conflictEditorContent}
+          onCancel={closeConflictEditor}
+          onSave={handleSaveConflictResolution}
+          saving={conflictEditorSaving}
         />
       )}
     </StyledWrapper>

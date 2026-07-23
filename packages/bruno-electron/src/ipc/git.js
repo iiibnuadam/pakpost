@@ -27,6 +27,8 @@ const {
   pullGitChanges,
   checkPullStatus,
   resolveConflict,
+  readConflictFile,
+  saveConflictFile,
   abortConflictResolution,
   createStash,
   listStashes,
@@ -329,6 +331,31 @@ const registerGitIpc = (mainWindow) => {
         throw new Error('Not a git repository');
       }
       await resolveConflict(gitRootPath, filePath, strategy);
+      return true;
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }));
+
+  ipcMain.handle('renderer:read-conflict-file', withRepoLock(async (event, { collectionPath, filePath }) => {
+    try {
+      const gitRootPath = getCollectionGitRootPath(collectionPath);
+      if (!gitRootPath) {
+        throw new Error('Not a git repository');
+      }
+      return await readConflictFile(gitRootPath, filePath);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }));
+
+  ipcMain.handle('renderer:save-conflict-file', withRepoLock(async (event, { collectionPath, filePath, content }) => {
+    try {
+      const gitRootPath = getCollectionGitRootPath(collectionPath);
+      if (!gitRootPath) {
+        throw new Error('Not a git repository');
+      }
+      await saveConflictFile(gitRootPath, filePath, content);
       return true;
     } catch (error) {
       return Promise.reject(error);

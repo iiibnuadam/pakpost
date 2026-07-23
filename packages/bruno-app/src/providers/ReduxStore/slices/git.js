@@ -900,4 +900,31 @@ export const updateGitWorkspaceSettings = (workspaceUid, settings) => (dispatch)
   dispatch(setGitWorkspaceSettings({ workspaceUid, settings }));
 };
 
+export const readConflictFile = (collection, filePath) => async () => {
+  if (!collection?.pathname || !filePath) return '';
+
+  const { ipcRenderer } = window;
+  return await ipcRenderer.invoke('renderer:read-conflict-file', {
+    collectionPath: collection.pathname,
+    filePath
+  });
+};
+
+export const saveConflictFile = (collection, filePath, content) => async (dispatch) => {
+  if (!collection?.pathname || !filePath) return;
+
+  try {
+    const { ipcRenderer } = window;
+    await ipcRenderer.invoke('renderer:save-conflict-file', {
+      collectionPath: collection.pathname,
+      filePath,
+      content
+    });
+    await dispatch(fetchGitStatus(collection, { skipLogs: true }));
+  } catch (error) {
+    console.error('[Git] Error saving conflict file:', error);
+    throw error;
+  }
+};
+
 export default gitSlice.reducer;

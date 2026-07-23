@@ -289,8 +289,35 @@ const resolveConflict = async (gitRootPath, filePath, strategy) => {
     const git = getSimpleGitInstanceForPath(gitRootPath);
     const normalizedPath = filePath.replace(/\\/g, '/');
 
-    if (strategy !== 'ours' && strategy !== 'theirs') {
-      reject(new Error('Invalid conflict resolution strategy. Use "ours" or "theirs".'));
+    if (strategy !== 'ours' && strategy !== 'theirs' && strategy !== 'both') {
+      reject(new Error('Invalid conflict resolution strategy. Use "ours", "theirs", or "both".'));
+      return;
+    }
+
+    if (strategy === 'both') {
+      // Accept both: keep ours then append theirs at the end.
+      git.checkout(['--ours', normalizedPath], async (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        try {
+          const theirs = await git.raw(['show', `:3:${normalizedPath}`]);
+          const fullPath = path.join(gitRootPath, normalizedPath);
+          if (theirs && fs.existsSync(fullPath)) {
+            fs.appendFileSync(fullPath, '\n' + theirs);
+          }
+          git.add(normalizedPath, (err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        } catch (innerError) {
+          reject(innerError);
+        }
+      });
       return;
     }
 
@@ -306,6 +333,31 @@ const resolveConflict = async (gitRootPath, filePath, strategy) => {
         }
         resolve();
       });
+    });
+  });
+};
+
+const readConflictFile = async (gitRootPath, filePath) => {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const fullPath = path.join(gitRootPath, normalizedPath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error('File does not exist');
+  }
+  return fs.readFileSync(fullPath, 'utf8');
+};
+
+const saveConflictFile = async (gitRootPath, filePath, content) => {
+  return new Promise((resolve, reject) => {
+    const git = getSimpleGitInstanceForPath(gitRootPath);
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const fullPath = path.join(gitRootPath, normalizedPath);
+    fs.writeFileSync(fullPath, content, 'utf8');
+    git.add(normalizedPath, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
     });
   });
 };
@@ -2171,6 +2223,8 @@ module.exports = {
   abortConflictResolution,
   continueMerge,
   resolveConflict,
+  readConflictFile,
+  saveConflictFile,
   popStash,
   continueRebase,
   abortRebase,

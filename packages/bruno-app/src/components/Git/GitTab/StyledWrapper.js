@@ -397,6 +397,26 @@ const StyledWrapper = styled.div`
         color: white;
       }
     }
+
+    &.both {
+      color: ${(props) => props.theme.colors.text.green};
+      border-color: ${(props) => props.theme.colors.text.green};
+
+      &:hover {
+        background: ${(props) => props.theme.colors.text.green};
+        color: white;
+      }
+    }
+
+    &.edit {
+      color: ${(props) => props.theme.colors.text.muted};
+      border-color: ${(props) => props.theme.border.border1};
+
+      &:hover {
+        background: ${(props) => props.theme.sidebar.collection.item.hoverBg};
+        color: ${(props) => props.theme.text};
+      }
+    }
   }
 
   .git-action-btn {
