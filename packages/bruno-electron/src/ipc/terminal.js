@@ -1,6 +1,7 @@
 const { ipcMain } = require('electron');
 const pty = require('@lydell/node-pty');
 const os = require('os');
+const fs = require('fs');
 const path = require('path');
 const isDev = require('electron-is-dev');
 
@@ -16,8 +17,10 @@ class TerminalManager {
       try {
         const sessionId = this.generateSessionId();
         const shell = this.getDefaultShell();
-        // Use provided cwd or default to home directory
-        const cwd = options.cwd || this.getDefaultCwd();
+        // Use provided cwd when it exists on disk, otherwise fall back to the
+        // home directory (missing workspace folders etc. should not break spawn).
+        const requestedCwd = options.cwd || this.getDefaultCwd();
+        const cwd = fs.existsSync(requestedCwd) ? requestedCwd : this.getDefaultCwd();
 
         if (isDev) {
           console.log(`Creating new terminal session: ${sessionId} at ${cwd}`);

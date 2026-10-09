@@ -8,6 +8,7 @@ import {
   IconUpload,
   IconCloudDownload,
   IconGitCommit,
+  IconWand,
   IconKey
 } from '@tabler/icons';
 import toast from 'react-hot-toast';
@@ -16,6 +17,9 @@ import GitDiffViewer from '../GitDiffViewer';
 import GitCommitDetail from '../GitCommitDetail';
 import GitPullOptionsModal from '../GitPullOptionsModal';
 import GitConflictEditorModal from '../GitConflictEditorModal';
+import GitConflictSuggestionModal from '../GitConflictSuggestionModal';
+import { aiCliAnalyzeConflict, aiCliResolveConflict } from 'utils/git-ai';
+import { sendAiChatMessage, setAiChatOpen } from 'providers/ReduxStore/slices/aiChat';
 import {
   fetchGitStatus,
   fetchGitDiff,
@@ -45,6 +49,8 @@ import {
   continueGitRebase,
   abortGitRebase,
   updateGitWorkspaceSettings,
+  loadGitWorkspaceSettings,
+  clearGitError,
   getGitWorkspaceSettings,
   showGitCredentialsModal
 } from 'providers/ReduxStore/slices/git';
@@ -68,6 +74,10 @@ const GitTab = ({ workspace }) => {
   const [conflictEditorFile, setConflictEditorFile] = useState(null);
   const [conflictEditorContent, setConflictEditorContent] = useState('');
   const [conflictEditorSaving, setConflictEditorSaving] = useState(false);
+  const [conflictEditorNotice, setConflictEditorNotice] = useState(null);
+  const [suggestion, setSuggestion] = useState(null);
+  const [aiResolvingPath, setAiResolvingPath] = useState(null);
+  const aiStopRef = useRef(null);
   const [initRemoteUrl, setInitRemoteUrl] = useState('');
   const [historySelectedHash, setHistorySelectedHash] = useState(null);
   const [historyPanelWidth, setHistoryPanelWidth] = useState(320);
@@ -92,6 +102,9 @@ const GitTab = ({ workspace }) => {
   const settings = useSelector((state) => getGitWorkspaceSettings(state, workspaceUid));
 
   const { autoCommit, autoPush, autoPull, autoPullInterval, gitUsername, gitToken } = settings;
+  // Status credential untuk indikator UI: lengkap / incomplete / belum di-set.
+  const credentialsState
+    = gitUsername && gitToken ? 'set' : gitUsername || gitToken ? 'partial' : 'missing';
 
   const {
     status,
@@ -102,7 +115,8 @@ const GitTab = ({ workspace }) => {
     selectedFile,
     stashes,
     loading,
-    error
+    error,
+    errorOperation
   } = gitState;
 
   const hasLocalChanges = Boolean(
@@ -112,6 +126,8 @@ const GitTab = ({ workspace }) => {
   useEffect(() => {
     dispatch(fetchGitStatus(gitTarget));
     dispatch(fetchGitStashes(gitTarget));
+    // Restore persisted git settings (incl. credentials) for this workspace.
+    dispatch(loadGitWorkspaceSettings());
     // Silently fetch remote changes so the ahead/behind badge is up to date.
     dispatch(fetchGitChanges(gitTarget, 'origin', { silent: true })).catch(() => {});
   }, [gitTarget.uid, gitTarget.pathname, workspaceUid, dispatch]);
@@ -231,6 +247,35 @@ const GitTab = ({ workspace }) => {
     dispatch(showGitCredentialsModal({ workspaceUid, reason: gitUsername ? 'expired' : 'missing' }));
   };
 
+  // Kirim diagnostik error ke AI Chat (sesi baru) supaya jawabannya tersimpan
+  // dan bisa dibuka lagi kapan pun — user bebas pindah ke terminal dsb.
+  const handleFixWithAi = () => {
+    if (!error || !gitTarget.pathname) {
+      return;
+    }
+    const flatError = String(error).replace(/\s+/g, ' ').trim();
+    const title = `Fix: ${flatError.length > 40 ? `${flatError.slice(0, 40)}…` : flatError}`;
+    const prompt = [
+      'A git operation failed in my repository. Help me fix it.',
+      '',
+      `Repository: ${gitTarget.pathname}`,
+      `Operation: git ${errorOperation || 'operation'}`,
+      `Error: ${error}`,
+      `Branch: ${currentBranch || '(unknown)'} (ahead ${status?.ahead ?? 0}, behind ${status?.behind ?? 0})`,
+      `Working tree: ${status?.staged?.length || 0} staged, ${status?.unstaged?.length || 0} unstaged, ${status?.conflicted?.length || 0} conflicted`,
+      '',
+      'Explain the cause briefly, then give the exact commands to fix it, ordered safest first. Note any step that could lose work. Assume commands run from the repository root.'
+    ].join('\n');
+    dispatch(
+      sendAiChatMessage({
+        workspacePath: gitTarget.pathname,
+        text: prompt,
+        newSessionTitle: title
+      })
+    );
+    dispatch(setAiChatOpen(true));
+  };
+
   const handleRefresh = () => {
     dispatch(fetchGitStatus(gitTarget));
   };
@@ -330,10 +375,12 @@ const GitTab = ({ workspace }) => {
       .catch((err) => toast.error(err?.message || 'Failed to discard'));
   };
 
-  const openConflictEditor = async (file) => {
+  const openConflictEditor = async (file, options = {}) => {
     try {
-      const content = await dispatch(readConflictFile(gitTarget, file.path));
+      const content
+        = options.content !== undefined ? options.content : await dispatch(readConflictFile(gitTarget, file.path));
       setConflictEditorContent(content || '');
+      setConflictEditorNotice(options.notice || null);
       setConflictEditorFile(file);
     } catch (err) {
       toast.error(err?.message || 'Failed to open conflict editor');
@@ -344,6 +391,7 @@ const GitTab = ({ workspace }) => {
     setConflictEditorFile(null);
     setConflictEditorContent('');
     setConflictEditorSaving(false);
+    setConflictEditorNotice(null);
   };
 
   const handleSaveConflictResolution = async (content) => {
@@ -367,6 +415,78 @@ const GitTab = ({ workspace }) => {
         toast.error(err?.message || 'Failed to resolve conflict');
         openConflictEditor(file);
       });
+  };
+
+  const runAiMerge = (file) => {
+    const toastId = `ai-resolve-${file.path}`;
+    setAiResolvingPath(file.path);
+    toast.loading(`AI is resolving ${file.path}...`, { id: toastId, duration: Infinity });
+
+    const { done, stop } = aiCliResolveConflict({
+      collectionPath: gitTarget.pathname,
+      filePath: file.path
+    });
+    aiStopRef.current = stop;
+
+    done
+      .then((content) => {
+        toast.dismiss(toastId);
+        if (!content) {
+          toast.error('AI returned an empty resolution');
+          return;
+        }
+        openConflictEditor(file, {
+          content,
+          notice: 'AI-generated resolution — review it, then save.'
+        });
+      })
+      .catch((err) => {
+        toast.dismiss(toastId);
+        toast.error(err?.message || 'AI resolution failed');
+      })
+      .finally(() => {
+        aiStopRef.current = null;
+        setAiResolvingPath(null);
+      });
+  };
+
+  const handleAiResolveConflict = (file) => {
+    // Klik kedua pada file yang sedang diproses = batalkan.
+    if (aiResolvingPath === file.path) {
+      aiStopRef.current?.();
+      return;
+    }
+    if (aiResolvingPath) return;
+
+    const toastId = `ai-resolve-${file.path}`;
+    setAiResolvingPath(file.path);
+    toast.loading(`AI is analyzing ${file.path}...`, { id: toastId, duration: Infinity });
+
+    aiCliAnalyzeConflict({ collectionPath: gitTarget.pathname, filePath: file.path })
+      .then((analysis) => {
+        toast.dismiss(toastId);
+        setSuggestion({ file, analysis });
+      })
+      .catch((err) => {
+        toast.dismiss(toastId);
+        toast.error(err?.message || 'AI analysis failed');
+      })
+      .finally(() => {
+        setAiResolvingPath(null);
+      });
+  };
+
+  const closeSuggestion = () => setSuggestion(null);
+
+  const handlePickResolution = (strategy) => {
+    const file = suggestion?.file;
+    if (!file) return;
+    closeSuggestion();
+    if (strategy === 'ai-merge') {
+      runAiMerge(file);
+      return;
+    }
+    handleResolveConflict(file, strategy);
   };
 
   const handleAbortMerge = () => {
@@ -496,6 +616,23 @@ const GitTab = ({ workspace }) => {
             <div className="git-file-actions" onClick={(e) => e.stopPropagation()}>
               {type === 'conflicted' && (
                 <>
+                  <button
+                    className="git-file-action-btn ai"
+                    onClick={() => handleAiResolveConflict(file)}
+                    disabled={Boolean(aiResolvingPath) && aiResolvingPath !== file.path}
+                    title={
+                      aiResolvingPath === file.path
+                        ? 'Cancel AI resolution'
+                        : 'Resolve with AI (configure the CLI in Preferences > AI)'
+                    }
+                  >
+                    {aiResolvingPath === file.path ? (
+                      <IconLoader2 className="animate-spin" size={11} strokeWidth={1.5} />
+                    ) : (
+                      <IconWand size={11} strokeWidth={1.5} />
+                    )}
+                    AI
+                  </button>
                   <button className="git-file-action-btn ours" onClick={() => handleResolveConflict(file, 'ours')}>
                     Ours
                   </button>
@@ -670,7 +807,8 @@ const GitTab = ({ workspace }) => {
       toast.error('Cannot merge a branch into itself');
       return;
     }
-    dispatch(mergeGitBranch(gitTarget, branch));
+    // The thunk already toasts on failure (and refreshes status so conflicts appear).
+    dispatch(mergeGitBranch(gitTarget, branch)).catch(() => {});
   };
 
   const renderBranchesTab = () => {
@@ -953,11 +1091,48 @@ const GitTab = ({ workspace }) => {
             ))}
           </select>
         )}
-        <button className="git-action-btn git-credentials-btn" onClick={handleOpenCredentials}>
+        <button
+          className={`git-action-btn git-credentials-btn ${credentialsState}`}
+          onClick={handleOpenCredentials}
+          title={
+            credentialsState === 'set'
+              ? `Git credentials set for "${gitUsername}" — click to update`
+              : credentialsState === 'partial'
+                ? 'Credentials incomplete — both username and token are required'
+                : 'Set git credentials for push/pull on this workspace'
+          }
+        >
+          <span className="git-credentials-dot" />
           <IconKey size={14} strokeWidth={1.5} />
-          {gitUsername ? 'Update credentials' : 'Set credentials'}
+          {credentialsState === 'set' ? 'Credentials set' : credentialsState === 'partial' ? 'Fix credentials' : 'Set credentials'}
         </button>
       </div>
+
+      {error && (
+        <div className="git-error-banner" data-testid="git-error-banner">
+          <span className="git-error-text" title={error}>
+            {error}
+          </span>
+          <span className="git-error-actions">
+            <button
+              className="git-action-btn"
+              onClick={handleFixWithAi}
+              title="Ask your AI CLI agent how to fix this — opens AI Chat"
+              data-testid="git-error-fix-ai"
+            >
+              <IconWand size={13} strokeWidth={1.5} />
+              Fix with AI
+            </button>
+            <button
+              className="git-action-btn"
+              onClick={() => dispatch(clearGitError({ collectionUid: gitTarget.uid }))}
+              title="Dismiss"
+            >
+              Dismiss
+            </button>
+          </span>
+        </div>
+      )}
 
       <div className="git-tabs">
         <div
@@ -1022,9 +1197,18 @@ const GitTab = ({ workspace }) => {
         <GitConflictEditorModal
           file={conflictEditorFile}
           content={conflictEditorContent}
+          notice={conflictEditorNotice}
           onCancel={closeConflictEditor}
           onSave={handleSaveConflictResolution}
           saving={conflictEditorSaving}
+        />
+      )}
+      {suggestion && (
+        <GitConflictSuggestionModal
+          file={suggestion.file}
+          analysis={suggestion.analysis}
+          onPick={handlePickResolution}
+          onCancel={closeSuggestion}
         />
       )}
     </StyledWrapper>

@@ -43,6 +43,17 @@ const StyledWrapper = styled.div`
     }
   }
 
+  .git-conflict-editor-notice {
+    flex-shrink: 0;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    font-size: ${(props) => props.theme.font.size.sm};
+    border-radius: ${(props) => props.theme.border.radius.base};
+    border: 1px solid ${(props) => props.theme.colors.text.link}40;
+    background: ${(props) => props.theme.colors.text.link}15;
+    color: ${(props) => props.theme.colors.text.link};
+  }
+
   .git-conflict-editor-actions {
     display: flex;
     justify-content: flex-end;

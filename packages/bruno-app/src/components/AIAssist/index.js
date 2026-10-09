@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import get from 'lodash/get';
 import { IconStars, IconX, IconArrowBackUp } from '@tabler/icons';
 import { aiGenerateScript } from 'utils/ai';
+import { getAiCliStatus, aiCliChatSend } from 'utils/git-ai';
 import StyledWrapper from './StyledWrapper';
 
 const SUGGESTIONS = {
@@ -43,12 +44,20 @@ const PREVIEW_LABELS = {
 
 const isValidType = (t) => SUGGESTIONS[t] !== undefined;
 
+// Buang pembungkus ``` ... ``` bila CLI tetap mengembalikan fenced code.
+const stripCodeFences = (text) =>
+  String(text || '')
+    .trim()
+    .replace(/^```[a-zA-Z0-9_-]*\n?/, '')
+    .replace(/\n?```$/, '');
+
 const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onApply }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [generated, setGenerated] = useState(null);
+  const [cliStatus, setCliStatus] = useState(null);
   const buttonRef = useRef(null);
 
   const focusOnMount = useCallback((el) => {
@@ -57,6 +66,28 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
 
   const preferences = useSelector((state) => state.app.preferences);
   const isAiEnabled = get(preferences, 'ai.enabled', false);
+  const workspacePath = useSelector((state) => {
+    const { workspaces, activeWorkspaceUid } = state.workspaces || {};
+    return workspaces?.find((w) => w.uid === activeWorkspaceUid)?.pathname || null;
+  });
+
+  // Fallback tanpa API key: pakai CLI agent yang sama dengan AI Chat.
+  useEffect(() => {
+    let cancelled = false;
+    getAiCliStatus()
+      .then((status) => {
+        if (!cancelled) setCliStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setCliStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const cliAvailable = Boolean(cliStatus?.found);
+  const useCli = !isAiEnabled && cliAvailable;
 
   const suggestions = useMemo(() => SUGGESTIONS[scriptType] || [], [scriptType]);
   const title = TITLES[scriptType] || 'Generate with AI';
@@ -85,6 +116,27 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
     };
   }, [close]);
 
+  const generateWithCli = useCallback(
+    async (text) => {
+      const parts = [
+        `You are helping write a ${scriptType} for the Bruno/Pakpost API client.`,
+        requestContext ? `Request context:\n${JSON.stringify(requestContext, null, 2)}` : '',
+        docsContext ? `Documentation context:\n${JSON.stringify(docsContext, null, 2)}` : '',
+        `Current ${scriptType}:\n\`\`\`\n${currentScript || '(empty)'}\n\`\`\``,
+        `Task: ${text}`,
+        'Return ONLY the complete new content, with no explanations and no markdown code fences.'
+      ].filter(Boolean);
+
+      const { done } = aiCliChatSend({
+        workspacePath: workspacePath || undefined,
+        prompt: parts.join('\n\n')
+      });
+      const { text: content } = await done;
+      return stripCodeFences(content);
+    },
+    [scriptType, currentScript, requestContext, docsContext, workspacePath]
+  );
+
   const handleGenerate = useCallback(
     async (overridePrompt) => {
       const text = (overridePrompt ?? prompt).trim();
@@ -93,6 +145,16 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
       setError(null);
 
       try {
+        if (useCli) {
+          const content = await generateWithCli(text);
+          if (content) {
+            setGenerated(content);
+          } else {
+            setError('No content was generated. Try rephrasing your prompt.');
+          }
+          return;
+        }
+
         const result = await aiGenerateScript({
           scriptType,
           prompt: text,
@@ -115,7 +177,7 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
         setIsLoading(false);
       }
     },
-    [prompt, isLoading, scriptType, currentScript, requestContext, docsContext]
+    [prompt, isLoading, useCli, generateWithCli, scriptType, currentScript, requestContext, docsContext]
   );
 
   const handleApply = useCallback(() => {
@@ -131,7 +193,8 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
     setError(null);
   }, []);
 
-  if (!isAiEnabled || !isValidType(scriptType)) return null;
+  // Tampil kalau AI API-key aktif ATAU CLI agent tersedia.
+  if ((!isAiEnabled && !cliAvailable) || !isValidType(scriptType)) return null;
 
   return (
     <StyledWrapper>
@@ -203,7 +266,9 @@ const AIAssist = ({ scriptType, currentScript, requestContext, docsContext, onAp
                     Generating...
                   </span>
                 ) : (
-                  <span className="popup-hint">⌘ + Enter to generate</span>
+                  <span className="popup-hint">
+                    {useCli ? `⌘ + Enter to generate · via ${cliStatus?.provider?.command || 'CLI'}` : '⌘ + Enter to generate'}
+                  </span>
                 )}
                 <button
                   className="btn-generate"

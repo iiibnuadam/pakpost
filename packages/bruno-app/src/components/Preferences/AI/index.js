@@ -5,12 +5,13 @@ import { useFormik } from 'formik';
 import { useDispatch, useSelector } from 'react-redux';
 import * as Yup from 'yup';
 import toast from 'react-hot-toast';
-import { IconSettings, IconTerminal2 } from '@tabler/icons';
+import { IconSettings, IconTerminal2, IconGitMerge } from '@tabler/icons';
 import { savePreferences } from 'providers/ReduxStore/slices/app';
 import ToggleSwitch from 'components/ToggleSwitch';
 import { getAiStatus } from 'utils/ai';
 import ProviderCard from './ProviderCard';
 import AutocompletePane from './AutocompletePane';
+import GitResolverPane from './GitResolverPane';
 import StyledWrapper from './StyledWrapper';
 
 const aiPreferencesSchema = Yup.object().shape({
@@ -22,6 +23,13 @@ const aiPreferencesSchema = Yup.object().shape({
     enabled: Yup.boolean(),
     model: Yup.string().max(200).nullable(),
     triggerMode: Yup.string().oneOf(['aggressive', 'debounced', 'manual']).nullable()
+  }),
+  cliResolver: Yup.object().shape({
+    provider: Yup.string().max(100).nullable(),
+    custom: Yup.object().shape({
+      command: Yup.string().max(1024).nullable(),
+      args: Yup.string().max(2048).nullable()
+    })
   })
 });
 
@@ -62,6 +70,13 @@ const AI = () => {
         enabled: get(preferences, 'ai.autocomplete.enabled', true),
         model: get(preferences, 'ai.autocomplete.model', ''),
         triggerMode: get(preferences, 'ai.autocomplete.triggerMode', 'debounced')
+      },
+      cliResolver: {
+        provider: get(preferences, 'ai.cliResolver.provider', 'claude'),
+        custom: {
+          command: get(preferences, 'ai.cliResolver.custom.command', ''),
+          args: get(preferences, 'ai.cliResolver.custom.args', '-p {prompt}')
+        }
       }
     },
     validationSchema: aiPreferencesSchema,
@@ -82,6 +97,13 @@ const AI = () => {
               enabled: values.autocomplete?.enabled !== false,
               model: values.autocomplete?.model || '',
               triggerMode: values.autocomplete?.triggerMode || 'debounced'
+            },
+            cliResolver: {
+              provider: values.cliResolver?.provider || 'claude',
+              custom: {
+                command: values.cliResolver?.custom?.command || '',
+                args: values.cliResolver?.custom?.args || '-p {prompt}'
+              }
             }
           }
         })
@@ -164,6 +186,17 @@ const AI = () => {
         >
           <IconTerminal2 size={14} strokeWidth={1.5} />
           Autocomplete
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'git-resolver'}
+          className={`ai-tab ${activeTab === 'git-resolver' ? 'active' : ''}`}
+          onClick={() => setActiveTab('git-resolver')}
+          data-testid="ai-tab-git-resolver"
+        >
+          <IconGitMerge size={14} strokeWidth={1.5} />
+          CLI agent
         </button>
       </div>
 
@@ -252,6 +285,8 @@ const AI = () => {
           />
         </div>
       )}
+
+      {activeTab === 'git-resolver' && <GitResolverPane formik={formik} />}
     </StyledWrapper>
   );
 };

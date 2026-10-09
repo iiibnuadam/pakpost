@@ -1,11 +1,12 @@
 import React from 'react';
-import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconBrandGit } from '@tabler/icons';
+import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPin, IconPinned, IconPlus, IconDownload, IconSettings, IconMinus, IconSquare, IconX, IconCopy, IconBrandGit, IconWand } from '@tabler/icons';
 import { forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { savePreferences, showManageWorkspacePage, toggleSidebarCollapse } from 'providers/ReduxStore/slices/app';
 import { closeConsole, openConsole } from 'providers/ReduxStore/slices/logs';
+import { toggleAiChatPanel } from 'providers/ReduxStore/slices/aiChat';
 import { createWorkspaceWithUniqueName, openWorkspaceDialog, switchWorkspace } from 'providers/ReduxStore/slices/workspaces/actions';
 import { sortWorkspaces, toggleWorkspacePin } from 'utils/workspaces';
 import { focusTab, addTab } from 'providers/ReduxStore/slices/tabs';
@@ -367,6 +368,16 @@ const AppTitleBar = () => {
                   style={{ backgroundColor: gitStatus?.conflicted?.length > 0 ? '#ef4444' : '#f59e0b' }}
                 />
               )}
+            </ActionIcon>
+
+            {/* Toggle AI chat panel */}
+            <ActionIcon
+              onClick={() => dispatch(toggleAiChatPanel())}
+              label="AI Chat"
+              size="lg"
+              data-testid="toggle-ai-chat-button"
+            >
+              <IconWand size={16} strokeWidth={1.5} />
             </ActionIcon>
 
             {/* Toggle devtools */}

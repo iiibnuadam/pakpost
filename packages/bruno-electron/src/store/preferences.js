@@ -85,6 +85,13 @@ const defaultPreferences = {
       enabled: true,
       model: '',
       triggerMode: 'debounced'
+    },
+    cliResolver: {
+      provider: 'claude',
+      custom: {
+        command: '',
+        args: '-p {prompt}'
+      }
     }
   }
 };
@@ -167,6 +174,13 @@ const preferencesSchema = Yup.object().shape({
       enabled: Yup.boolean(),
       model: Yup.string().max(200).nullable(),
       triggerMode: Yup.string().oneOf(['aggressive', 'debounced', 'manual']).nullable()
+    }).optional(),
+    cliResolver: Yup.object({
+      provider: Yup.string().max(100).nullable(),
+      custom: Yup.object({
+        command: Yup.string().max(1024).nullable(),
+        args: Yup.string().max(2048).nullable()
+      }).optional()
     }).optional()
   }).optional()
 });

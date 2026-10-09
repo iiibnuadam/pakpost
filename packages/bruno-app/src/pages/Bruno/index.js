@@ -17,6 +17,7 @@ import 'codemirror/theme/monokai.css';
 import 'codemirror/addon/scroll/simplescrollbars.css';
 import 'swagger-ui-react/swagger-ui.css';
 import Devtools from 'components/Devtools';
+import AiChatPanel from 'components/AiChatPanel';
 import useGrpcEventListeners from 'utils/network/grpc-event-listeners';
 import useWsEventListeners from 'utils/network/ws-event-listeners';
 import Portal from 'components/Portal';
@@ -152,6 +153,7 @@ export default function Main() {
               </>
             )}
           </section>
+          <AiChatPanel />
         </StyledWrapper>
       </div>
 

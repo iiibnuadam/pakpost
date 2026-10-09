@@ -69,6 +69,34 @@ const StyledWrapper = styled.div`
 
   .git-credentials-btn {
     margin-left: auto;
+
+    .git-credentials-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: ${(props) => props.theme.colors.text.muted};
+      flex-shrink: 0;
+    }
+
+    &.set {
+      color: ${(props) => props.theme.colors.text.green};
+      border-color: ${(props) => props.theme.colors.text.green}60;
+
+      .git-credentials-dot {
+        background: ${(props) => props.theme.colors.text.green};
+        box-shadow: 0 0 0 2px ${(props) => props.theme.colors.text.green}25;
+      }
+    }
+
+    &.partial {
+      color: ${(props) => props.theme.colors.text.warning};
+      border-color: ${(props) => props.theme.colors.text.warning}60;
+
+      .git-credentials-dot {
+        background: ${(props) => props.theme.colors.text.warning};
+        box-shadow: 0 0 0 2px ${(props) => props.theme.colors.text.warning}25;
+      }
+    }
   }
 
   .git-branch-select {
@@ -111,6 +139,33 @@ const StyledWrapper = styled.div`
     font-size: ${(props) => props.theme.font.size.sm};
     color: ${(props) => props.theme.colors.text.muted};
     margin-right: 0.25rem;
+  }
+
+  .git-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 16px 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: ${(props) => props.theme.colors.text.danger};
+    background: ${(props) => props.theme.colors.bg.danger}15;
+    border: 1px solid ${(props) => props.theme.colors.bg.danger}40;
+    border-radius: ${(props) => props.theme.border.radius.sm};
+
+    .git-error-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .git-error-actions {
+      display: inline-flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
   }
 
   .git-tabs {
@@ -405,6 +460,24 @@ const StyledWrapper = styled.div`
       &:hover {
         background: ${(props) => props.theme.colors.text.green};
         color: white;
+      }
+    }
+
+    &.ai {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      color: ${(props) => props.theme.colors.text.purple};
+      border-color: ${(props) => props.theme.colors.text.purple};
+
+      &:hover:not(:disabled) {
+        background: ${(props) => props.theme.colors.text.purple};
+        color: white;
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
     }
 

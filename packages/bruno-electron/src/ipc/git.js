@@ -1,6 +1,7 @@
 const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const gitWorkspaceSettingsStore = require('../store/git-workspace-settings');
 const {
   cloneGitRepository,
   initGitRepo,
@@ -506,6 +507,17 @@ const registerGitIpc = (mainWindow) => {
       return Promise.reject(error);
     }
   }));
+
+  ipcMain.handle('renderer:git-workspace-settings-load', async () => {
+    return gitWorkspaceSettingsStore.getAllSettingsDecrypted();
+  });
+
+  ipcMain.handle('renderer:git-workspace-settings-save', async (_event, { workspaceUid, settings }) => {
+    if (!workspaceUid) {
+      throw new Error('Missing workspaceUid');
+    }
+    gitWorkspaceSettingsStore.saveSettings(workspaceUid, settings || {});
+  });
 };
 
 module.exports = registerGitIpc;

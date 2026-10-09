@@ -27,11 +27,27 @@ export const gitSlice = createSlice({
       state.collectionGit[collectionUid].loading = loading;
     },
     setGitError: (state, action) => {
-      const { collectionUid, error } = action.payload;
+      const { collectionUid, error, operation } = action.payload;
       if (!state.collectionGit[collectionUid]) {
         state.collectionGit[collectionUid] = {};
       }
       state.collectionGit[collectionUid].error = error;
+      state.collectionGit[collectionUid].errorOperation = operation || null;
+    },
+    clearGitError: (state, action) => {
+      const { collectionUid } = action.payload;
+      if (state.collectionGit[collectionUid]) {
+        state.collectionGit[collectionUid].error = null;
+        state.collectionGit[collectionUid].errorOperation = null;
+      }
+    },
+    setGitWorkspaceSettingsAll: (state, action) => {
+      const incoming = action.payload || {};
+      for (const [workspaceUid, settings] of Object.entries(incoming)) {
+        if (settings && typeof settings === 'object') {
+          state.workspaceSettings[workspaceUid] = { ...settings };
+        }
+      }
     },
     setGitStatus: (state, action) => {
       const { collectionUid, status } = action.payload;
@@ -40,6 +56,15 @@ export const gitSlice = createSlice({
       }
       state.collectionGit[collectionUid].status = status;
       state.collectionGit[collectionUid].error = null;
+    },
+    removeGitFilesFromStatus: (state, action) => {
+      const { collectionUid, filePaths } = action.payload;
+      const status = state.collectionGit[collectionUid]?.status;
+      if (!status) return;
+      const discarded = new Set(filePaths);
+      status.staged = (status.staged || []).filter((file) => !discarded.has(file.path));
+      status.unstaged = (status.unstaged || []).filter((file) => !discarded.has(file.path));
+      status.conflicted = (status.conflicted || []).filter((file) => !discarded.has(file.path));
     },
     setGitPullStatus: (state, action) => {
       const { collectionUid, pullStatus } = action.payload;
@@ -140,7 +165,10 @@ export const gitSlice = createSlice({
 export const {
   setGitLoading,
   setGitError,
+  clearGitError,
+  setGitWorkspaceSettingsAll,
   setGitStatus,
+  removeGitFilesFromStatus,
   setGitPullStatus,
   setGitLogs,
   setGitBranches,
@@ -197,10 +225,18 @@ export const initGitRepo = (collection, remoteUrl = '') => async (dispatch) => {
   }
 };
 
+// Monotonic per-collection request counter. Status responses are async; an
+// in-flight poll that STARTED before an operation (e.g. discard) can FINISH
+// after the operation's own refresh and overwrite fresher state with stale
+// data. Responses carrying an outdated sequence number are dropped.
+const gitStatusRequestSeq = {};
+
 export const fetchGitStatus = (collection, options = {}) => async (dispatch) => {
   if (!collection?.pathname) return;
 
   const { skipLogs, silent } = options;
+  const requestSeq = (gitStatusRequestSeq[collection.uid] = (gitStatusRequestSeq[collection.uid] || 0) + 1);
+  const isStale = () => gitStatusRequestSeq[collection.uid] !== requestSeq;
 
   if (!silent) {
     dispatch(setGitLoading({ collectionUid: collection.uid, loading: true }));
@@ -210,6 +246,7 @@ export const fetchGitStatus = (collection, options = {}) => async (dispatch) => 
     const status = await ipcRenderer.invoke('renderer:get-collection-git-status', {
       collectionPath: collection.pathname
     });
+    if (isStale()) return;
     dispatch(setGitStatus({ collectionUid: collection.uid, status }));
 
     if (status.isGitRepo) {
@@ -217,8 +254,10 @@ export const fetchGitStatus = (collection, options = {}) => async (dispatch) => 
         const logs = await ipcRenderer.invoke('renderer:get-collection-git-logs', {
           collectionPath: collection.pathname
         });
+        if (isStale()) return;
         dispatch(setGitLogs({ collectionUid: collection.uid, logs }));
       }
+      if (isStale()) return;
       dispatch(setGitBranches({
         collectionUid: collection.uid,
         branches: status.branches || [],
@@ -298,6 +337,9 @@ export const discardGitChanges = (collection, filePaths) => async (dispatch) => 
       collectionPath: collection.pathname,
       filePaths
     });
+    // Optimistically drop the files from the Changes list so the row disappears
+    // immediately; the status refresh below re-syncs with the real git state.
+    dispatch(removeGitFilesFromStatus({ collectionUid: collection.uid, filePaths }));
     dispatch(fetchGitStatus(collection, { skipLogs: true }));
   } catch (error) {
     console.error('[Git] Error discarding changes:', error);
@@ -391,6 +433,8 @@ export const mergeGitBranch = (collection, branchName) => async (dispatch) => {
   } catch (error) {
     console.error('[Git] Error merging branch:', error);
     dispatch(setGitError({ collectionUid: collection.uid, error: error.message }));
+    // Refresh even on failure so merge conflicts show up immediately in the Changes tab.
+    await dispatch(fetchGitStatus(collection, { skipLogs: true }));
     toast.error(error.message || 'Failed to merge branch');
     throw error;
   }
@@ -641,6 +685,7 @@ export const pullGitChanges = (collection, options = {}) => async (dispatch) => 
       });
     } else {
       toast.error(message);
+      dispatch(setGitError({ collectionUid: collection.uid, error: message, operation: 'pull' }));
     }
     throw error;
   } finally {
@@ -896,8 +941,28 @@ export const fetchCommitFileDiff = (collection, commitHash, filePath) => async (
   }
 };
 
-export const updateGitWorkspaceSettings = (workspaceUid, settings) => (dispatch) => {
+export const updateGitWorkspaceSettings = (workspaceUid, settings) => (dispatch, getState) => {
   dispatch(setGitWorkspaceSettings({ workspaceUid, settings }));
+  // Persist ke disk (token terenkripsi di main process). Fire-and-forget.
+  const merged = getGitWorkspaceSettings(getState(), workspaceUid);
+  window.ipcRenderer
+    ?.invoke('renderer:git-workspace-settings-save', { workspaceUid, settings: merged })
+    .catch((err) => console.error('[Git] Failed to save workspace settings:', err));
+};
+
+export const loadGitWorkspaceSettings = () => async (dispatch) => {
+  try {
+    const { ipcRenderer } = window;
+    if (!ipcRenderer) {
+      return;
+    }
+    const settingsByUid = await ipcRenderer.invoke('renderer:git-workspace-settings-load');
+    if (settingsByUid && typeof settingsByUid === 'object') {
+      dispatch(setGitWorkspaceSettingsAll(settingsByUid));
+    }
+  } catch (err) {
+    console.error('[Git] Failed to load workspace settings:', err);
+  }
 };
 
 export const readConflictFile = (collection, filePath) => async () => {

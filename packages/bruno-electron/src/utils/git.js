@@ -100,14 +100,18 @@ const ensurePullConfig = async (gitRootPath) => {
       await git.raw(['config', '--local', 'pull.rebase', 'false']);
     }
 
+    // pull.ff sengaja tidak dipaksa 'only': perilaku ff-only sudah diatur lewat
+    // flag eksplisit di pullGitChanges. Repo lama yang pernah diset 'only' oleh
+    // versi sebelumnya di-unset supaya strategi merge (--no-rebase) bisa jalan
+    // saat branch divergen.
     let pullFf = '';
     try {
       pullFf = await git.raw(['config', '--local', 'pull.ff']);
     } catch {
       // Config belum ada, tetap kosong.
     }
-    if (!pullFf || !pullFf.trim()) {
-      await git.raw(['config', '--local', 'pull.ff', 'only']);
+    if (pullFf && pullFf.trim() === 'only') {
+      await git.raw(['config', '--local', '--unset', 'pull.ff']);
     }
   } catch (error) {
     // Jangan gagalkan pull hanya karena gagal set config.
@@ -194,8 +198,9 @@ const discardChanges = async (gitRootPath, filePaths) => {
         });
 
         // Categorize files based on their git status
-        const trackedFiles = [];
-        const untrackedFiles = [];
+        const headFiles = []; // tracked in HEAD - restore index + worktree from HEAD
+        const stagedNewFiles = []; // added to index, not in HEAD - remove from index + disk
+        const untrackedFiles = []; // never tracked - delete from disk
 
         filePaths.forEach((filePath) => {
           // Normalize paths for comparison
@@ -211,9 +216,16 @@ const discardChanges = async (gitRootPath, filePaths) => {
           if (fileStatus && fileStatus.working_dir === '?') {
             // Untracked file - needs to be deleted from filesystem
             untrackedFiles.push(filePath);
+          } else if (fileStatus && fileStatus.index === 'A') {
+            // Staged new file (possibly with further worktree edits). It does not
+            // exist in HEAD, so `git checkout` would silently no-op and the file
+            // would stay in the Changes list — remove it from the index and disk.
+            stagedNewFiles.push(filePath);
           } else if (fileStatus) {
-            // Tracked file - can be discarded with git checkout
-            trackedFiles.push(filePath);
+            // Tracked in HEAD - restore BOTH index and worktree from HEAD, so any
+            // staged edits are unstaged as well and the file fully disappears
+            // from the Changes list.
+            headFiles.push(filePath);
           } else {
             // File not in status - might be already deleted, renamed, or doesn't exist
             console.warn(`File not found in git status: ${relativePath}. File may have been already deleted or moved.`);
@@ -226,18 +238,33 @@ const discardChanges = async (gitRootPath, filePaths) => {
           }
         });
 
-        // Handle tracked and untracked files sequentially
+        // Handle the three categories sequentially
         try {
-          // Handle tracked files with git checkout
-          if (trackedFiles.length > 0) {
+          // Files tracked in HEAD: restore index + worktree from HEAD.
+          if (headFiles.length > 0) {
             await new Promise((checkoutResolve, checkoutReject) => {
-              git.checkout(trackedFiles, (err, res) => {
+              git.checkout(['HEAD', '--', ...headFiles], (err, res) => {
                 if (err) {
                   console.error('Error discarding tracked files:', err);
                   checkoutReject(err);
                 } else {
-                  console.log(`Discarded ${trackedFiles.length} tracked files`);
+                  console.log(`Discarded ${headFiles.length} tracked files`);
                   checkoutResolve(res);
+                }
+              });
+            });
+          }
+
+          // Staged new files: not in HEAD, so remove them from the index and disk.
+          if (stagedNewFiles.length > 0) {
+            await new Promise((rmResolve, rmReject) => {
+              git.rm(['-f', '--', ...stagedNewFiles], (err, res) => {
+                if (err) {
+                  console.error('Error removing staged new files:', err);
+                  rmReject(err);
+                } else {
+                  console.log(`Removed ${stagedNewFiles.length} staged new files`);
+                  rmResolve(res);
                 }
               });
             });
@@ -257,7 +284,7 @@ const discardChanges = async (gitRootPath, filePaths) => {
           }
 
           resolve({
-            trackedFilesDiscarded: trackedFiles.length,
+            trackedFilesDiscarded: headFiles.length + stagedNewFiles.length,
             untrackedFilesDeleted: untrackedFiles.length
           });
         } catch (discardError) {
@@ -296,28 +323,39 @@ const resolveConflict = async (gitRootPath, filePath, strategy) => {
 
     if (strategy === 'both') {
       // Accept both: keep ours then append theirs at the end.
-      git.checkout(['--ours', normalizedPath], async (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        try {
-          const theirs = await git.raw(['show', `:3:${normalizedPath}`]);
-          const fullPath = path.join(gitRootPath, normalizedPath);
-          if (theirs && fs.existsSync(fullPath)) {
-            fs.appendFileSync(fullPath, '\n' + theirs);
+      // Stage 3 (theirs) may not exist for delete/modify conflicts, so read
+      // the index stages explicitly instead of a bare `git show :3:`.
+      readConflictStages(gitRootPath, normalizedPath)
+        .then(({ theirs }) => {
+          if (theirs === null || theirs === undefined) {
+            reject(
+              new Error('Their side is unavailable for this file (deleted or renamed?). Use "Ours" or "Edit" instead.')
+            );
+            return;
           }
-          git.add(normalizedPath, (err) => {
+          git.checkout(['--ours', normalizedPath], (err) => {
             if (err) {
               reject(err);
               return;
             }
-            resolve();
+            try {
+              const fullPath = path.join(gitRootPath, normalizedPath);
+              if (theirs.trim() && fs.existsSync(fullPath)) {
+                fs.appendFileSync(fullPath, '\n' + theirs);
+              }
+              git.add(normalizedPath, (err) => {
+                if (err) {
+                  reject(err);
+                  return;
+                }
+                resolve();
+              });
+            } catch (innerError) {
+              reject(innerError);
+            }
           });
-        } catch (innerError) {
-          reject(innerError);
-        }
-      });
+        })
+        .catch(reject);
       return;
     }
 
@@ -344,6 +382,22 @@ const readConflictFile = async (gitRootPath, filePath) => {
     throw new Error('File does not exist');
   }
   return fs.readFileSync(fullPath, 'utf8');
+};
+
+const readConflictStages = async (gitRootPath, filePath) => {
+  const git = getSimpleGitInstanceForPath(gitRootPath);
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  const readStage = async (stage) => {
+    try {
+      return await git.raw(['show', `:${stage}:${normalizedPath}`]);
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const [base, ours, theirs] = await Promise.all([readStage(1), readStage(2), readStage(3)]);
+  return { base, ours, theirs };
 };
 
 const saveConflictFile = async (gitRootPath, filePath, content) => {
@@ -978,7 +1032,10 @@ const checkPullStatus = async (gitRootPath, remote = 'origin', remoteBranch = 'H
       try {
         // Check if HEAD is an ancestor of the remote branch.
         // If yes, a fast-forward pull is possible.
-        const remoteRef = remoteBranch === 'HEAD' ? `${remote}/${status.tracking || 'HEAD'}` : `${remote}/${remoteBranch}`;
+        // status.tracking dari simple-git sudah berupa "origin/main",
+        // jadi jangan digabung lagi dengan nama remote.
+        const remoteRef
+          = remoteBranch === 'HEAD' ? status.tracking || `${remote}/HEAD` : `${remote}/${remoteBranch}`;
         await git.raw(['merge-base', '--is-ancestor', 'HEAD', remoteRef]);
         canFastForward = true;
       } catch (ancestorErr) {
@@ -1050,9 +1107,14 @@ async function getChangedFilesInCollectionGit(_gitRootPath, _collectionPath) {
       );
 
       const conflicted = await Promise.all(
-        status.files.filter((file) => file.index === 'U' || file.working_dir === 'U').map(async (file) => {
-          return { path: file.path, type: 'conflicted', fileIndex: file.index, working_dir: file.working_dir };
-        }) || []
+        status.files
+          .filter(
+            (file) =>
+              file.index === 'U' || file.working_dir === 'U' || (file.index === 'A' && file.working_dir === 'A')
+          )
+          .map(async (file) => {
+            return { path: file.path, type: 'conflicted', fileIndex: file.index, working_dir: file.working_dir };
+          }) || []
       );
 
       resolve({
@@ -2224,6 +2286,7 @@ module.exports = {
   continueMerge,
   resolveConflict,
   readConflictFile,
+  readConflictStages,
   saveConflictFile,
   popStash,
   continueRebase,

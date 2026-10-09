@@ -46,6 +46,7 @@ const registerApiSpecIpc = require('./ipc/apiSpec');
 const registerGitIpc = require('./ipc/git');
 const registerOpenAPISyncIpc = require('./ipc/openapi-sync');
 const registerAiIpc = require('./ipc/ai');
+const registerGitAiIpc = require('./ipc/git-ai');
 const registerAiAutocompleteIpc = require('./ipc/ai/autocomplete');
 const { registerMountIpc } = require('./ipc/mount');
 const collectionWatcher = require('./app/collection-watcher');
@@ -496,6 +497,7 @@ app.on('ready', async () => {
   registerOpenAPISyncIpc(mainWindow);
   registerAiIpc(mainWindow);
   registerAiAutocompleteIpc(mainWindow);
+  registerGitAiIpc();
   registerMountIpc();
   // Auto-update dinonaktifkan sementara (lihat penjelasan di atas).
   // registerUpdaterIpc(mainWindow);

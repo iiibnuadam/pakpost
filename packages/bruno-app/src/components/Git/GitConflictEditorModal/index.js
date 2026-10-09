@@ -17,7 +17,7 @@ const getLanguageMode = (filePath) => {
   return 'text/plain';
 };
 
-const GitConflictEditorModal = ({ file, content, onCancel, onSave, saving }) => {
+const GitConflictEditorModal = ({ file, content, notice, onCancel, onSave, saving }) => {
   const { displayedTheme } = useTheme();
   const [editorContent, setEditorContent] = useState(content || '');
 
@@ -38,6 +38,7 @@ const GitConflictEditorModal = ({ file, content, onCancel, onSave, saving }) => 
             <div className="git-conflict-editor-path">{file?.path}</div>
           </div>
         </div>
+        {notice ? <div className="git-conflict-editor-notice">{notice}</div> : null}
         <div className="git-conflict-editor-container">
           <CodeEditor
             theme={displayedTheme}

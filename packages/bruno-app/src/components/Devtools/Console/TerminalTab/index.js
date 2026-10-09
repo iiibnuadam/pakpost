@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useSelector } from 'react-redux';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { IconTerminal2, IconPlus } from '@tabler/icons';
@@ -221,6 +222,12 @@ const TerminalTab = () => {
   const { theme } = useTheme();
   const terminalTheme = getTerminalTheme(theme);
 
+  // New terminal sessions start in the active workspace folder by default.
+  const workspacePathname = useSelector((state) => {
+    const { workspaces, activeWorkspaceUid } = state.workspaces || {};
+    return workspaces?.find((w) => w.uid === activeWorkspaceUid)?.pathname || null;
+  });
+
   // Load sessions list
   const loadSessions = useCallback(async (currentActiveSessionId = null) => {
     if (!window.ipcRenderer) return [];
@@ -260,7 +267,9 @@ const TerminalTab = () => {
       if (!window.ipcRenderer) return null;
 
       try {
-        const options = cwd ? { cwd } : {};
+        // Default new sessions to the active workspace folder.
+        const effectiveCwd = cwd || workspacePathname;
+        const options = effectiveCwd ? { cwd: effectiveCwd } : {};
         const newSessionId = await window.ipcRenderer.invoke('terminal:create', options);
         if (newSessionId) {
           await loadSessions(newSessionId);
@@ -272,7 +281,7 @@ const TerminalTab = () => {
       }
       return null;
     },
-    [loadSessions]
+    [loadSessions, workspacePathname]
   );
 
   // Listen for requests to open terminal at specific CWD
