@@ -56,6 +56,9 @@ Pilih file sesuai platform:
 
 ## Build dari Source (Runbook)
 
+> **Mau rilis?** Lihat [RELEASE.md](RELEASE.md) — runbook lengkap tagging, CI release,
+> signing macOS, auto-update, rollback, dan troubleshooting.
+
 ### Prasyarat
 
 - **Node.js v22.12.0** — sesuai `.nvmrc`, pakai `nvm use` supaya otomatis.
