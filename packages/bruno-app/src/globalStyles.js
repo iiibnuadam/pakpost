@@ -357,6 +357,7 @@ const GlobalStyle = createGlobalStyle`
     align-items: center;
     margin-bottom: 0.375rem;
     gap: 0.375rem;
+    position: relative;
   }
 
   .CodeMirror-brunoVarInfo .var-name {
@@ -381,6 +382,60 @@ const GlobalStyle = createGlobalStyle`
     color: ${(props) => props.theme.brand};
     letter-spacing: 0.03125rem;
     flex-shrink: 0;
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-badge.clickable {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-badge.clickable:hover {
+    background: ${(props) => rgba(props.theme.brand, 0.14)};
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-badge .scope-caret {
+    display: inline-flex;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+  }
+
+  /* Scope dropdown (move variable to another scope) */
+  .CodeMirror-brunoVarInfo .var-scope-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.25rem;
+    min-width: 10rem;
+    padding: 0.25rem;
+    background: ${(props) => props.theme.dropdown.bg};
+    ${(props) =>
+      props.theme.dropdown.border && props.theme.dropdown.border !== 'none'
+        ? `border: 1px solid ${props.theme.dropdown.border};`
+        : ''}
+    ${(props) =>
+      props.theme.dropdown.shadow && props.theme.dropdown.shadow !== 'none'
+        ? `box-shadow: ${props.theme.dropdown.shadow};`
+        : ''}
+    border-radius: ${(props) => props.theme.border.radius.base};
+    z-index: 20;
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-dropdown .var-scope-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.25rem 0.5rem;
+    font-size: ${(props) => props.theme.font.size.sm};
+    color: ${(props) => props.theme.dropdown.color};
+    background: transparent;
+    border: none;
+    border-radius: ${(props) => props.theme.border.radius.base};
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .CodeMirror-brunoVarInfo .var-scope-dropdown .var-scope-option:hover {
+    background: ${(props) => props.theme.dropdown.hoverBg};
   }
 
   /* Value Container */

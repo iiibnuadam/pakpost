@@ -1,5 +1,8 @@
 import { interpolate } from '@usebruno/common';
-import { COPY_SUCCESS_TIMEOUT, extractVariableInfo, renderVarInfo } from './brunoVarInfo';
+import { COPY_SUCCESS_TIMEOUT, extractVariableInfo, getMovableScopes, renderVarInfo } from './brunoVarInfo';
+import store from 'providers/ReduxStore';
+import { moveVariableScope } from 'providers/ReduxStore/slices/collections/actions';
+import { getVariableScope, findCollectionByUid } from 'utils/collections';
 
 // Mock the dependencies
 jest.mock('@usebruno/common', () => ({
@@ -16,6 +19,7 @@ jest.mock('@usebruno/common', () => ({
 }));
 
 jest.mock('providers/ReduxStore', () => ({
+  __esModule: true,
   default: {
     dispatch: jest.fn(),
     getState: jest.fn()
@@ -23,14 +27,18 @@ jest.mock('providers/ReduxStore', () => ({
 }));
 
 jest.mock('providers/ReduxStore/slices/collections/actions', () => ({
-  updateVariableInScope: jest.fn()
+  updateVariableInScope: jest.fn(),
+  moveVariableScope: jest.fn()
 }));
 
 jest.mock('utils/collections', () => ({
   getVariableScope: jest.fn(),
   isVariableSecret: jest.fn(),
   getAllVariables: jest.fn(),
-  findEnvironmentInCollection: jest.fn()
+  findEnvironmentInCollection: jest.fn(),
+  findCollectionByUid: jest.fn(),
+  findItemInCollectionByItemUid: jest.fn(),
+  getTreePathFromCollectionToItem: jest.fn(() => [])
 }));
 
 jest.mock('utils/common/codemirror', () => ({
@@ -544,5 +552,188 @@ describe('renderVarInfo', () => {
       expect(warningNote).not.toBeNull();
       expect(warningNote.textContent).toContain('OAuth2 token not found');
     });
+  });
+});
+
+describe('getMovableScopes', () => {
+  it('should exclude the current scope from candidates', () => {
+    const result = getMovableScopes('collection', {
+      isRequest: true,
+      hasFolder: true,
+      hasActiveEnvironment: true,
+      hasActiveGlobalEnvironment: true
+    });
+
+    expect(result).not.toContain('collection');
+  });
+
+  it('should include global only when a global environment is active', () => {
+    const withGlobal = getMovableScopes('collection', { hasActiveGlobalEnvironment: true });
+    const withoutGlobal = getMovableScopes('collection', { hasActiveGlobalEnvironment: false });
+
+    expect(withGlobal).toContain('global');
+    expect(withoutGlobal).not.toContain('global');
+  });
+
+  it('should include environment only when a collection environment is active', () => {
+    const withEnv = getMovableScopes('collection', { hasActiveEnvironment: true });
+    const withoutEnv = getMovableScopes('collection', { hasActiveEnvironment: false });
+
+    expect(withEnv).toContain('environment');
+    expect(withoutEnv).not.toContain('environment');
+  });
+
+  it('should always include collection as a candidate', () => {
+    expect(getMovableScopes('environment', {})).toContain('collection');
+    expect(getMovableScopes('global', {})).toContain('collection');
+  });
+
+  it('should include folder and request only in their respective contexts', () => {
+    const full = getMovableScopes('collection', { isRequest: true, hasFolder: true });
+    const bare = getMovableScopes('collection', {});
+
+    expect(full).toContain('folder');
+    expect(full).toContain('request');
+    expect(bare).not.toContain('folder');
+    expect(bare).not.toContain('request');
+  });
+
+  it('should default all context flags to false', () => {
+    expect(getMovableScopes('environment')).toEqual(['collection']);
+  });
+});
+
+describe('renderVarInfo scope dropdown', () => {
+  const collection = {
+    uid: 'col-1',
+    activeEnvironmentUid: 'env-1',
+    runtimeVariables: {}
+  };
+  const item = { uid: 'item-1', type: 'http-request' };
+  const collectionScopeInfo = {
+    type: 'collection',
+    value: 'test-value',
+    data: {
+      collection,
+      variable: { uid: 'var-1', name: 'apiKey', value: 'test-value', enabled: true }
+    }
+  };
+
+  beforeEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+
+    getVariableScope.mockReturnValue(collectionScopeInfo);
+    findCollectionByUid.mockReturnValue(collection);
+    store.getState.mockReturnValue({
+      globalEnvironments: { activeGlobalEnvironmentUid: 'global-1' },
+      collections: { collections: [collection] }
+    });
+    store.dispatch.mockImplementation((action) => action);
+    moveVariableScope.mockReturnValue(Promise.resolve());
+  });
+
+  const setup = () => {
+    const containerDiv = renderVarInfo({ string: '{{apiKey}}' }, { variables: { apiKey: 'test-value' }, collection, item });
+    const scopeBadge = containerDiv.querySelector('.var-scope-badge');
+    return { containerDiv, scopeBadge };
+  };
+
+  it('should make the scope badge clickable when the variable can be moved', () => {
+    const { scopeBadge } = setup();
+
+    expect(scopeBadge.classList.contains('clickable')).toBe(true);
+    expect(scopeBadge.querySelector('.scope-caret')).not.toBeNull();
+  });
+
+  it('should open a dropdown with movable scopes when the badge is clicked', () => {
+    const { containerDiv, scopeBadge } = setup();
+
+    scopeBadge.click();
+
+    const dropdown = containerDiv.querySelector('.var-scope-dropdown');
+    expect(dropdown).not.toBeNull();
+
+    const options = [...dropdown.querySelectorAll('.var-scope-option')].map((option) => option.textContent);
+    // current scope is 'collection'; item is a request inside no folder, both envs active
+    expect(options).toEqual(['Move to Global', 'Move to Environment', 'Move to Request']);
+  });
+
+  it('should dispatch moveVariableScope when an option is selected', () => {
+    const { containerDiv, scopeBadge } = setup();
+
+    scopeBadge.click();
+    const dropdown = containerDiv.querySelector('.var-scope-dropdown');
+    const globalOption = [...dropdown.querySelectorAll('.var-scope-option')].find((option) =>
+      option.textContent.includes('Global')
+    );
+    globalOption.click();
+
+    expect(moveVariableScope).toHaveBeenCalledWith(
+      'apiKey',
+      'global',
+      collectionScopeInfo,
+      'col-1',
+      { folderUid: undefined, itemUid: 'item-1' }
+    );
+  });
+
+  it('should close the dropdown after an option is selected', () => {
+    const { containerDiv, scopeBadge } = setup();
+
+    scopeBadge.click();
+    const dropdown = containerDiv.querySelector('.var-scope-dropdown');
+    dropdown.querySelector('.var-scope-option').click();
+
+    expect(containerDiv.querySelector('.var-scope-dropdown')).toBeNull();
+  });
+
+  it('should update the badge label after a successful move', async () => {
+    getVariableScope
+      .mockReturnValueOnce(collectionScopeInfo)
+      .mockReturnValueOnce({ type: 'global', value: 'test-value', data: { variableName: 'apiKey', value: 'test-value' } });
+
+    const { containerDiv, scopeBadge } = setup();
+
+    scopeBadge.click();
+    const dropdown = containerDiv.querySelector('.var-scope-dropdown');
+    const globalOption = [...dropdown.querySelectorAll('.var-scope-option')].find((option) =>
+      option.textContent.includes('Global')
+    );
+    globalOption.click();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(scopeBadge.querySelector('.var-scope-badge-label').textContent).toBe('Global');
+  });
+
+  it('should not make the badge clickable for read-only runtime variables', () => {
+    getVariableScope.mockReturnValue({
+      type: 'runtime',
+      value: 'runtime-value',
+      data: { variableName: 'apiKey', value: 'runtime-value', readonly: true }
+    });
+
+    const { containerDiv, scopeBadge } = setup();
+
+    expect(scopeBadge.classList.contains('clickable')).toBe(false);
+    scopeBadge.click();
+    expect(containerDiv.querySelector('.var-scope-dropdown')).toBeNull();
+  });
+
+  it('should not offer the current scope as a move target', () => {
+    getVariableScope.mockReturnValue({
+      type: 'global',
+      value: 'test-value',
+      data: { variableName: 'apiKey', value: 'test-value' }
+    });
+
+    const { containerDiv, scopeBadge } = setup();
+
+    scopeBadge.click();
+    const options = [...containerDiv.querySelectorAll('.var-scope-option')].map((option) => option.textContent);
+
+    expect(options).not.toContain('Move to Global');
+    expect(options).toContain('Move to Environment');
   });
 });

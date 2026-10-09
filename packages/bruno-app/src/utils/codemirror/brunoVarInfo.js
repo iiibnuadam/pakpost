@@ -7,8 +7,8 @@
  */
 
 import { interpolate, mockDataFunctions, timeBasedDynamicVars } from '@usebruno/common';
-import { getVariableScope, isVariableSecret, getAllVariables, findCollectionByUid, findItemInCollectionByItemUid } from 'utils/collections';
-import { updateVariableInScope } from 'providers/ReduxStore/slices/collections/actions';
+import { getVariableScope, isVariableSecret, getAllVariables, findCollectionByUid, findItemInCollectionByItemUid, getTreePathFromCollectionToItem } from 'utils/collections';
+import { updateVariableInScope, moveVariableScope } from 'providers/ReduxStore/slices/collections/actions';
 import store from 'providers/ReduxStore';
 import { defineCodeMirrorBrunoVariablesMode } from 'utils/common/codemirror';
 import { MaskedEditor } from 'utils/common/masked-editor';
@@ -63,6 +63,42 @@ const EYE_OFF_ICON_SVG = `
     <line x1="1" y1="1" x2="23" y2="23"></line>
   </svg>
 `;
+
+const SCOPE_CARET_SVG = `
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+`;
+
+// Scopes that a variable can be moved between from the var info popup
+const MOVABLE_SCOPES = ['global', 'environment', 'collection', 'folder', 'request'];
+
+/**
+ * Compute the scopes a variable can be moved to, based on its current scope
+ * and the available contexts (active environments, folder/request presence).
+ */
+export const getMovableScopes = (
+  scopeType,
+  { isRequest = false, hasFolder = false, hasActiveEnvironment = false, hasActiveGlobalEnvironment = false } = {}
+) => {
+  const candidates = [];
+  if (hasActiveGlobalEnvironment && scopeType !== 'global') {
+    candidates.push('global');
+  }
+  if (hasActiveEnvironment && scopeType !== 'environment') {
+    candidates.push('environment');
+  }
+  if (scopeType !== 'collection') {
+    candidates.push('collection');
+  }
+  if (hasFolder && scopeType !== 'folder') {
+    candidates.push('folder');
+  }
+  if (isRequest && scopeType !== 'request') {
+    candidates.push('request');
+  }
+  return candidates;
+};
 
 const getScopeLabel = (scopeType) => {
   const labels = {
@@ -307,7 +343,10 @@ export const renderVarInfo = (token, options) => {
   // Show scope label with indication if it's a new variable
   const scopeLabel = getScopeLabel(displayScopeType);
   const isNewVariable = scopeInfo && scopeInfo.data && scopeInfo.data.variable === null;
-  scopeBadge.textContent = isNewVariable ? `${scopeLabel}` : scopeLabel;
+  const scopeBadgeLabel = document.createElement('span');
+  scopeBadgeLabel.className = 'var-scope-badge-label';
+  scopeBadgeLabel.textContent = isNewVariable ? `${scopeLabel}` : scopeLabel;
+  scopeBadge.appendChild(scopeBadgeLabel);
 
   header.appendChild(varName);
   header.appendChild(scopeBadge);
@@ -315,6 +354,97 @@ export const renderVarInfo = (token, options) => {
 
   // Check if variable name is valid
   const isValidVariableName = scopeInfo.type === 'process.env' || scopeInfo.type === 'dynamic' || scopeInfo.type === 'oauth2' || variableNameRegex.test(variableName);
+
+  // Make the scope badge a dropdown when the variable can be moved to another scope
+  if (isValidVariableName && !isReadOnly && MOVABLE_SCOPES.includes(scopeInfo.type)) {
+    const reduxState = store.getState();
+    const hasActiveGlobalEnvironment = !!reduxState?.globalEnvironments?.activeGlobalEnvironmentUid;
+    const treePath = item && collection ? getTreePathFromCollectionToItem(collection, item) : [];
+    const nearestFolderUid = [...treePath].reverse().find((pathItem) => pathItem?.type === 'folder')?.uid;
+    const isRequestItem = !!(item && item.uid && item.type !== 'folder');
+
+    const movableScopes = getMovableScopes(scopeInfo.type, {
+      isRequest: isRequestItem,
+      hasFolder: !!nearestFolderUid,
+      hasActiveEnvironment: !!(collection && collection.activeEnvironmentUid),
+      hasActiveGlobalEnvironment
+    });
+
+    if (movableScopes.length) {
+      scopeBadge.classList.add('clickable');
+      scopeBadge.title = 'Change scope';
+
+      const caret = document.createElement('span');
+      caret.className = 'scope-caret';
+      caret.innerHTML = SCOPE_CARET_SVG;
+      scopeBadge.appendChild(caret);
+
+      let dropdownEl = null;
+
+      const closeDropdown = () => {
+        if (dropdownEl && dropdownEl.parentNode) {
+          dropdownEl.parentNode.removeChild(dropdownEl);
+        }
+        dropdownEl = null;
+        document.removeEventListener('click', onDocClick, true);
+      };
+
+      const onDocClick = (e) => {
+        if (dropdownEl && !dropdownEl.contains(e.target) && !scopeBadge.contains(e.target)) {
+          closeDropdown();
+        }
+      };
+
+      scopeBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+
+        if (dropdownEl) {
+          closeDropdown();
+          return;
+        }
+
+        dropdownEl = document.createElement('div');
+        dropdownEl.className = 'var-scope-dropdown';
+
+        movableScopes.forEach((targetScope) => {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.className = 'var-scope-option';
+          option.textContent = `Move to ${getScopeLabel(targetScope)}`;
+          option.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            closeDropdown();
+
+            store
+              .dispatch(
+                moveVariableScope(variableName, targetScope, scopeInfo, collection.uid, {
+                  folderUid: nearestFolderUid,
+                  itemUid: isRequestItem ? item.uid : null
+                })
+              )
+              .then(() => {
+                // Re-fetch scope info so subsequent edits target the new scope
+                const freshState = store.getState();
+                const freshCollection = findCollectionByUid(freshState.collections.collections, collection.uid);
+                const freshItem = item ? findItemInCollectionByItemUid(freshCollection, item.uid) : null;
+                const updatedScopeInfo = getVariableScope(variableName, freshCollection, freshItem);
+                if (updatedScopeInfo) {
+                  scopeInfo = updatedScopeInfo;
+                  scopeBadgeLabel.textContent = getScopeLabel(updatedScopeInfo.type);
+                }
+              })
+              .catch((err) => {
+                console.error('Failed to move variable:', err);
+              });
+          });
+          dropdownEl.appendChild(option);
+        });
+
+        header.appendChild(dropdownEl);
+        document.addEventListener('click', onDocClick, true);
+      });
+    }
+  }
 
   // Show warning if variable name is invalid
   if (!isValidVariableName) {

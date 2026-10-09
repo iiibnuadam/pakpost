@@ -56,10 +56,13 @@ import {
   saveFolderDraft,
   addVar,
   updateVar,
+  deleteVar,
   addFolderVar,
   updateFolderVar,
+  deleteFolderVar,
   addCollectionVar,
   updateCollectionVar,
+  deleteCollectionVar,
   addTransientDirectory,
   addSaveTransientRequestModal,
   updatePathParam,
@@ -2304,6 +2307,243 @@ export const updateVariableInScope = (variableName, newValue, scopeInfo, collect
       }
     } catch (error) {
       toast.error(`Failed to update variable: ${error.message}`);
+      reject(error);
+    }
+  });
+};
+
+/**
+ * Move a variable from its current scope to another scope.
+ * The variable is created/updated in the target scope first; only then is it
+ * removed from the source scope, so a failure mid-move never loses the value.
+ * @param {string} variableName - Name of the variable to move
+ * @param {string} targetScope - 'global' | 'environment' | 'collection' | 'folder' | 'request'
+ * @param {Object} scopeInfo - Scope info from getVariableScope() for the source scope
+ * @param {string} collectionUid - Collection UID
+ * @param {Object} [targetContext] - { folderUid, itemUid } required for folder/request targets
+ */
+export const moveVariableScope = (variableName, targetScope, scopeInfo, collectionUid, targetContext = {}) => (dispatch, getState) => {
+  return new Promise((resolve, reject) => {
+    if (!scopeInfo || !variableName || !targetScope) {
+      return reject(new Error('Invalid variable or target scope'));
+    }
+
+    const state = getState();
+    const collection = findCollectionByUid(state.collections.collections, collectionUid);
+
+    const scopeLabels = {
+      global: 'Global',
+      environment: 'Environment',
+      collection: 'Collection',
+      folder: 'Folder',
+      request: 'Request'
+    };
+
+    try {
+      const rawValue = scopeInfo.value ?? '';
+      const sourceVariable = scopeInfo.data?.variable || null;
+      // Preserve the secret flag when moving between env/global scopes
+      const sourceSecret = sourceVariable ? !!sourceVariable.secret : false;
+
+      const createInTarget = () => {
+        switch (targetScope) {
+          case 'global': {
+            const globalEnvironments = state.globalEnvironments?.globalEnvironments || [];
+            const activeGlobalEnvUid = state.globalEnvironments?.activeGlobalEnvironmentUid;
+            if (!activeGlobalEnvUid) {
+              return Promise.reject(new Error('No active global environment'));
+            }
+            const environment = globalEnvironments.find((env) => env.uid === activeGlobalEnvUid);
+            if (!environment) {
+              return Promise.reject(new Error('Global environment not found'));
+            }
+            const variables = cloneDeep(environment.variables || []);
+            const existing = variables.find((v) => v.name === variableName);
+            if (existing) {
+              const { ephemeral, persistedValue, ...rest } = existing;
+              Object.assign(existing, { ...rest, value: rawValue, enabled: true });
+            } else {
+              variables.push({ uid: uuid(), name: variableName, value: rawValue, secret: sourceSecret, enabled: true, type: 'text' });
+            }
+            return dispatch(saveGlobalEnvironment({ variables, environmentUid: activeGlobalEnvUid }));
+          }
+
+          case 'environment': {
+            if (!collection) {
+              return Promise.reject(new Error('Collection not found'));
+            }
+            const environment = findEnvironmentInCollection(collection, collection.activeEnvironmentUid);
+            if (!environment) {
+              return Promise.reject(new Error('No active environment'));
+            }
+            const variables = cloneDeep(environment.variables || []);
+            const existing = variables.find((v) => v.name === variableName);
+            if (existing) {
+              const { ephemeral, persistedValue, ...rest } = existing;
+              Object.assign(existing, { ...rest, value: rawValue, enabled: true });
+            } else {
+              variables.push({ uid: uuid(), name: variableName, value: rawValue, secret: sourceSecret, enabled: true, type: 'text' });
+            }
+            return dispatch(saveEnvironment(variables, environment.uid, collectionUid));
+          }
+
+          case 'collection': {
+            if (!collection) {
+              return Promise.reject(new Error('Collection not found'));
+            }
+            const collectionRoot = (collection.draft && collection.draft.root) || collection.root || {};
+            const vars = get(collectionRoot, 'request.vars.req', []);
+            const existing = vars.find((v) => v.name === variableName);
+            if (existing) {
+              dispatch(updateCollectionVar({
+                collectionUid,
+                type: 'request',
+                var: { ...existing, value: rawValue, enabled: true }
+              }));
+            } else {
+              dispatch(addCollectionVar({
+                collectionUid,
+                type: 'request',
+                var: { name: variableName, value: rawValue, enabled: true }
+              }));
+            }
+            return dispatch(saveCollectionRoot(collectionUid));
+          }
+
+          case 'folder': {
+            const folderUid = targetContext.folderUid;
+            if (!collection || !folderUid) {
+              return Promise.reject(new Error('Folder not found'));
+            }
+            const folder = findItemInCollection(collection, folderUid);
+            if (!folder) {
+              return Promise.reject(new Error('Folder not found'));
+            }
+            const folderRoot = folder.draft || folder.root;
+            const vars = get(folderRoot, 'request.vars.req', []);
+            const existing = vars.find((v) => v.name === variableName);
+            if (existing) {
+              dispatch(updateFolderVar({
+                collectionUid,
+                folderUid,
+                type: 'request',
+                var: { ...existing, value: rawValue, enabled: true }
+              }));
+            } else {
+              dispatch(addFolderVar({
+                collectionUid,
+                folderUid,
+                type: 'request',
+                var: { name: variableName, value: rawValue, enabled: true }
+              }));
+            }
+            return dispatch(saveFolderRoot(collectionUid, folderUid));
+          }
+
+          case 'request': {
+            const itemUid = targetContext.itemUid;
+            if (!collection || !itemUid) {
+              return Promise.reject(new Error('Request not found'));
+            }
+            const item = findItemInCollection(collection, itemUid);
+            if (!item) {
+              return Promise.reject(new Error('Request not found'));
+            }
+            const itemVars = item.draft ? get(item, 'draft.request.vars.req', []) : get(item, 'request.vars.req', []);
+            const existing = itemVars.find((v) => v.name === variableName);
+            if (existing) {
+              dispatch(updateVar({
+                collectionUid,
+                itemUid,
+                type: 'request',
+                var: { ...existing, value: rawValue, enabled: true }
+              }));
+            } else {
+              dispatch(addVar({
+                collectionUid,
+                itemUid,
+                type: 'request',
+                var: { name: variableName, value: rawValue, local: false, enabled: true }
+              }));
+            }
+            return dispatch(saveRequest(itemUid, collectionUid, true));
+          }
+
+          default:
+            return Promise.reject(new Error(`Unknown target scope: ${targetScope}`));
+        }
+      };
+
+      const removeFromSource = () => {
+        const sourceType = scopeInfo.type;
+        const sourceVarUid = sourceVariable?.uid;
+
+        // New (not yet persisted) variables have nothing to remove at the source
+        if (!sourceVarUid) {
+          return Promise.resolve();
+        }
+
+        switch (sourceType) {
+          case 'global': {
+            const globalEnvironments = state.globalEnvironments?.globalEnvironments || [];
+            const activeGlobalEnvUid = state.globalEnvironments?.activeGlobalEnvironmentUid;
+            const environment = globalEnvironments.find((env) => env.uid === activeGlobalEnvUid);
+            if (!environment) {
+              return Promise.resolve();
+            }
+            const variables = (environment.variables || []).filter((v) => v.uid !== sourceVarUid);
+            return dispatch(saveGlobalEnvironment({ variables, environmentUid: activeGlobalEnvUid }));
+          }
+
+          case 'environment': {
+            const environment = scopeInfo.data?.environment;
+            if (!environment) {
+              return Promise.resolve();
+            }
+            const variables = (environment.variables || []).filter((v) => v.uid !== sourceVarUid);
+            return dispatch(saveEnvironment(variables, environment.uid, collectionUid));
+          }
+
+          case 'collection': {
+            dispatch(deleteCollectionVar({ collectionUid, type: 'request', varUid: sourceVarUid }));
+            return dispatch(saveCollectionRoot(collectionUid));
+          }
+
+          case 'folder': {
+            const folderUid = scopeInfo.data?.folder?.uid;
+            if (!folderUid) {
+              return Promise.resolve();
+            }
+            dispatch(deleteFolderVar({ collectionUid, folderUid, type: 'request', varUid: sourceVarUid }));
+            return dispatch(saveFolderRoot(collectionUid, folderUid));
+          }
+
+          case 'request': {
+            const itemUid = scopeInfo.data?.item?.uid;
+            if (!itemUid) {
+              return Promise.resolve();
+            }
+            dispatch(deleteVar({ collectionUid, itemUid, type: 'request', varUid: sourceVarUid }));
+            return dispatch(saveRequest(itemUid, collectionUid, true));
+          }
+
+          default:
+            return Promise.resolve();
+        }
+      };
+
+      return createInTarget()
+        .then(removeFromSource)
+        .then(() => {
+          toast.success(`Variable "${variableName}" moved to ${scopeLabels[targetScope] || targetScope}`);
+          resolve();
+        })
+        .catch((error) => {
+          toast.error(`Failed to move variable: ${error.message}`);
+          reject(error);
+        });
+    } catch (error) {
+      toast.error(`Failed to move variable: ${error.message}`);
       reject(error);
     }
   });
