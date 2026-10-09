@@ -127,6 +127,9 @@ async function main() {
     await execCommandWithOutput(`npm run dist:${osArg} --workspace=packages/bruno-electron${publishFlag}`);
   } catch (error) {
     console.error('An error occurred:', error);
+    // Exit non-zero so CI marks the build step as failed instead of
+    // silently reporting success with no published artifacts.
+    process.exit(1);
   }
 }
 
