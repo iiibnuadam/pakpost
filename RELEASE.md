@@ -174,7 +174,9 @@ app ter-notarize saat pertama dibuka.
 | Job publish gagal 403/404 | `GH_TOKEN` belum diisi, expired, atau scope kurang. Cek repo Settings → Secrets; pastikan token bisa push ke repo ini. |
 | Release terbuat tapi kosong/tanpa `latest.yml` | Lihat log job; biasanya `PUBLISH` tidak terbawa. Jangan pernah hapus `latest*.yml` dari aset release. |
 | macOS dmg tidak ada arm64 & x64 | Config `electron-builder-config.js` target mac harus `arch: ['x64','arm64']` — jangan diubah ke arch tunggal kecuali sengaja. |
-| "Version X is not new" / aset tidak ter-upload | Nomor versi di `package.json` tidak naik. Bump + tag baru. |
+| Release hanya muncul sebagai **Draft** (tidak terlihat publik) walau aset lengkap | electron-builder kadang gagal flip draft→published di akhir (race antar job). Fix: PATCH lewat API — `curl -X PATCH -H "Authorization: Bearer $GH_TOKEN" -d '{"draft":false}' https://api.github.com/repos/<owner>/<repo>/releases/<id>`, id didapat dari `GET /releases`. |
+| Release terbuat tapi hanya ada 2 aset "Source code", dan semua job tampak **success** | Versi di `packages/bruno-electron/package.json` tidak naik dari rilis sebelumnya. electron-builder melewati publish dengan alasan `existing release published more than 2 hours ago` (cek log job, blok `publishing`). Fix: bump versi → commit → **pindahkan tag** (`git push origin :refs/tags/vX.Y.Z`, `git tag -f`, `git push origin vX.Y.Z`). |
+| "Version X is not new" / aset tidak ter-upload | Sama seperti di atas — nomor versi tidak naik. Bump + tag baru. |
 | App mac hasil release "damaged" | Build unsigned dan di-download via browser. Solusi benar: pasang signing (bagian 6). Workaround user: `xattr -dr com.apple.quarantine /Applications/Pakpost.app`. |
 | Windows build gagal di CI | Cek log; sering karena resource limits. Re-run job. Build Windows stabil juga bisa dilakukan dari mac (`npm run build:electron:win`). |
 | Tag sudah di-push tapi CI tidak jalan | Nama tag harus persis `v1.2.3` (awalan `v`). Cek Actions → enable workflow kalau repo baru dipindahkan. |
