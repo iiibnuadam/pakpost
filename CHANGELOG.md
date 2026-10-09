@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased] — AI CLI Agent, AI Chat & Git Improvements
+## [Unreleased]
+
+## [1.0.3] — 2026-10-09
 
 Semua fitur AI di bawah ini **tanpa API key** — jalan lewat CLI agent yang sudah
 login di mesin (Claude Code / Kimi / Antigravity / custom), dikonfigurasi di
